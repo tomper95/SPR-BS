@@ -1,0 +1,139 @@
+import json
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from src.config import FECHA_CIERRE, BASE_ANUAL, BONOS_MASTER_PATH, BONOS_FLUJOS_PATH
+from src.engine_bonos import run_engine_bonos
+from src.plotting import plot_curve
+
+
+# =========================
+# Config UI
+# =========================
+st.set_page_config(layout="wide")
+st.title("SPR – Bonos Soberanos")
+st.caption(f"Cierre simulado: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
+
+
+# =========================
+# Cargar PRECIOS_CI (JSON)
+# =========================
+PRECIOS_CI_PATH = Path("data/precios_ci.json")
+
+try:
+    PRECIOS_CI = json.loads(PRECIOS_CI_PATH.read_text(encoding="utf-8"))
+    if not isinstance(PRECIOS_CI, dict):
+        st.error("precios_ci.json debe contener un objeto JSON (dict).")
+        PRECIOS_CI = {}
+except FileNotFoundError:
+    st.error("No se encontró data/precios_ci.json")
+    PRECIOS_CI = {}
+except Exception as e:
+    st.error(f"Error leyendo data/precios_ci.json: {e}")
+    PRECIOS_CI = {}
+
+st.sidebar.caption(f"Precios CI cargados desde JSON: {len(PRECIOS_CI)}")
+
+
+# =========================
+# Input monto (opcional)
+# =========================
+monto_input = st.sidebar.text_input(
+    "Monto inicial a invertir",
+    value="",
+    help="Monto a invertir hoy al Valor Actual del bono (aprox). Solo números."
+)
+
+monto_inicial = None
+if monto_input.strip() != "":
+    if monto_input.isdigit():
+        monto_inicial = int(monto_input)
+    else:
+        st.sidebar.error("El monto debe ser un número entero positivo")
+
+
+# =========================
+# Ejecutar motor BONOS
+# =========================
+df_view, df_curve = run_engine_bonos(
+    BONOS_MASTER_PATH,
+    BONOS_FLUJOS_PATH,
+    PRECIOS_CI
+)
+
+
+# =========================
+# Tabla principal (limpia)
+# =========================
+# Si no existe "Años al VTO" (normal), lo calculamos acá a partir de "Dias al VTO"
+if "Dias al VTO" in df_view.columns and "Años al VTO" not in df_view.columns:
+    dias = pd.to_numeric(df_view["Dias al VTO"], errors="coerce")
+    df_view["Años al VTO"] = (dias / 365.0).round(2)
+
+cols_mostrar = [
+    "Especie",
+    "Moneda",
+    "Valor Actual",
+    "Fecha de Vencimiento",
+    "Años al VTO",
+    "TNA %",
+]
+
+cols_mostrar_existentes = [c for c in cols_mostrar if c in df_view.columns]
+st.dataframe(df_view[cols_mostrar_existentes], use_container_width=True)
+
+
+# =========================
+# Monto total estimado a cobrar (si hay input)
+# =========================
+if monto_inicial is not None and monto_inicial > 0:
+    required_cols = ["Especie", "Fecha de Vencimiento", "Valor Actual", "_total_flujo_por_vn100"]
+    missing = [c for c in required_cols if c not in df_view.columns]
+
+    if missing:
+        st.error(f"Faltan columnas internas para calcular el monto: {missing}")
+    else:
+        df_monto = df_view[required_cols].copy()
+
+        df_monto["Valor Actual"] = pd.to_numeric(df_monto["Valor Actual"], errors="coerce")
+        df_monto["_total_flujo_por_vn100"] = pd.to_numeric(df_monto["_total_flujo_por_vn100"], errors="coerce")
+
+        df_monto = df_monto.dropna(subset=["Valor Actual", "_total_flujo_por_vn100"])
+        df_monto = df_monto[df_monto["Valor Actual"] > 0]
+
+        if df_monto.empty:
+            st.warning("No hay datos suficientes para estimar el monto a cobrar (precio o flujos inválidos).")
+        else:
+            # Aproximación: monto invertido / precio -> VN100 equivalentes
+            df_monto["VN100_equivalentes"] = monto_inicial / df_monto["Valor Actual"]
+            df_monto["Monto a Cobrar (moneda flujo)"] = df_monto["VN100_equivalentes"] * df_monto["_total_flujo_por_vn100"]
+
+            df_monto = df_monto[["Especie", "Fecha de Vencimiento", "Monto a Cobrar (moneda flujo)"]].sort_values(
+                "Fecha de Vencimiento"
+            )
+
+            st.subheader("Monto total estimado a cobrar por bono")
+            st.dataframe(
+                df_monto.style.format({"Monto a Cobrar (moneda flujo)": "{:,.2f}"}),
+                use_container_width=False,
+                height=260,
+            )
+
+
+# =========================
+# Gráfico (TNA % vs Años)
+# =========================
+# IMPORTANTE: df_curve trae "Dias al VTO" (no "Años al VTO"). El plot convierte si x_unit="years".
+if df_curve is not None and not df_curve.empty and "Dias al VTO" in df_curve.columns and "TNA %" in df_curve.columns:
+    fig = plot_curve(
+        df_curve,
+        x_col="Dias al VTO",
+        y_col="TNA %",
+        title="Curva de Bonos (TNA % vs Años)",
+        x_unit="years"
+    )
+    st.pyplot(fig, use_container_width=True)
+else:
+    st.info("Curva no disponible: faltan datos o columnas para graficar (se completa al cargar más bonos).")
