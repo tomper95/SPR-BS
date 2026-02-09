@@ -1,9 +1,9 @@
 import json
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
+import numpy as np
 
+from pathlib import Path
 from src.config import FECHA_CIERRE, BASE_ANUAL, BONOS_MASTER_PATH, BONOS_FLUJOS_PATH
 from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
@@ -106,17 +106,27 @@ if monto_inicial is not None and monto_inicial > 0:
         if df_monto.empty:
             st.warning("No hay datos suficientes para estimar el monto a cobrar (precio o flujos inválidos).")
         else:
-            # Aproximación: monto invertido / precio -> VN100 equivalentes
+            # Aproximación: monto invertido / precio -> VN100 equivalentes (precio está por VN=100)
             df_monto["VN100_equivalentes"] = monto_inicial / df_monto["Valor Actual"]
+
+            # NOMINALES (VN) comprados (entero, sin fracciones)
+            df_monto["Nominales"] = np.floor(df_monto["VN100_equivalentes"] * 100).astype(int)
+
+            # Recalcular VN100 equivalentes desde nominales (consistente con el floor)
+            df_monto["VN100_equivalentes"] = df_monto["Nominales"] / 100.0
+
             df_monto["Monto a Cobrar (moneda flujo)"] = df_monto["VN100_equivalentes"] * df_monto["_total_flujo_por_vn100"]
 
-            df_monto = df_monto[["Especie", "Fecha de Vencimiento", "Monto a Cobrar (moneda flujo)"]].sort_values(
+            df_monto = df_monto[["Especie", "Fecha de Vencimiento", "Nominales", "Monto a Cobrar (moneda flujo)"]].sort_values(
                 "Fecha de Vencimiento"
             )
 
             st.subheader("Monto total estimado a cobrar por bono")
             st.dataframe(
-                df_monto.style.format({"Monto a Cobrar (moneda flujo)": "{:,.2f}"}),
+                    df_monto.style.format({
+                        "Nominales": "{:,.0f}",
+                        "Monto a Cobrar (moneda flujo)": "{:,.2f}"
+                    }),
                 use_container_width=False,
                 height=260,
             )
