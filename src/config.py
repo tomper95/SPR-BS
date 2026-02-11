@@ -4,6 +4,8 @@ from pathlib import Path
 # Parámetros globales
 # =========================
 FECHA_CIERRE = "2026-02-11"   # fijo (simulado por ahora)
+TC_ARS_USD = 1433.30
+
 BASE_ANUAL = 360             # fijo (para TNA/TIR base 360)
 PRECIO_CI_SOBRE_RESIDUAL = False
 

@@ -6,7 +6,7 @@ import pandas as pd
 
 BONOS_COLUMN_MAP = {
     "codigo": "Especie",
-    "moneda": "Moneda",
+    "moneda": "Moneda de Cobro",
     "precio_ci": "Valor Actual",
     "fecha_final": "Fecha de Vencimiento",
     "Dias_al_vto": "Dias al VTO",

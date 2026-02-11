@@ -132,7 +132,6 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
 
     # Aplicar filtro al master
     master = master[master["codigo"].astype(str).str.upper().isin(codigos_validos)].copy()
-    master = master[master["moneda"] == "USD"].copy()
 
     # quedarnos solo con flujos >= cierre
     flujos_fut["flujo_total_por_vn100"] = (
@@ -142,7 +141,12 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
     rows = []
     for _, bono in master.iterrows():
         codigo = str(bono["codigo"]).upper().strip()
-        moneda = str(bono["moneda"]).upper().strip()
+        # Tomamos flujos solo por codigo (la moneda real viene del flujo)
+        g = flujos_fut[flujos_fut["codigo"] == codigo].sort_values("fecha_pago")
+        if g.empty:
+            moneda_flujo = ""
+        else:
+            moneda_flujo = str(g["moneda_flujo"].iloc[0]).upper().strip()
 
         # -------------------------
         # Valor residual (capital vivo)
@@ -176,11 +180,10 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
         else:
             precio_ci = np.nan
 
-        g = flujos_fut[(flujos_fut["codigo"] == codigo) & (flujos_fut["moneda_flujo"] == moneda)].sort_values("fecha_pago")
         if g.empty or not np.isfinite(precio_ci) or precio_ci <= 0:
             rows.append({
                 "codigo": codigo,
-                "moneda": moneda,
+                "moneda": moneda_flujo,
                 "precio_ci": precio_ci,
 
                 # Interno para cálculo de monto (si después lo necesitás):
@@ -193,7 +196,7 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
             })
             continue
 
-        # Construir flujos para TIR
+        # Construir flujos para TIR (en moneda de cobro)
         fechas = [fc] + list(g["fecha_pago"])
         montos = [-precio_ci] + list(g["flujo_total_por_vn100"])
 
@@ -210,7 +213,7 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
 
         rows.append({
             "codigo": codigo,
-            "moneda": moneda,
+            "moneda": moneda_flujo,
             "precio_ci": precio_ci,
 
             # interno para cálculo de monto (si el usuario pone monto a invertir)

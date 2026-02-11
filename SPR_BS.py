@@ -16,6 +16,15 @@ st.set_page_config(layout="wide")
 st.title("SPR – Bonos Soberanos")
 st.caption(f"Cierre simulado: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
 
+# =========================
+# Selector moneda (USD / ARS)
+# Moneda = moneda de cobro (moneda_flujo)
+# =========================
+moneda_sel = st.sidebar.radio(
+    "Mostrar bonos en:",
+    options=["USD", "ARS"],
+    index=0,
+)
 
 # =========================
 # Cargar PRECIOS_CI (JSON)
@@ -55,13 +64,26 @@ if monto_input.strip() != "":
 
 
 # =========================
-# Ejecutar motor BONOS
+# Ejecutar motor BONOS (PRE-DÓLAR)
 # =========================
 df_view, df_curve = run_engine_bonos(
     BONOS_MASTER_PATH,
     BONOS_FLUJOS_PATH,
     PRECIOS_CI
 )
+
+# =========================
+# Filtrar por moneda de cobro (tabla + curva)
+# =========================
+# Nota: en formatting.py la columna se llama "Moneda de Cobro"
+if "Moneda de Cobro" in df_view.columns:
+    df_view = df_view[df_view["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
+
+# df_curve no trae moneda, filtramos por especies presentes en la tabla
+if df_curve is not None and not df_curve.empty and "Especie" in df_view.columns:
+    especies_ok = set(df_view["Especie"].astype(str).str.upper())
+    if "Especie" in df_curve.columns:
+        df_curve = df_curve[df_curve["Especie"].astype(str).str.upper().isin(especies_ok)].copy()
 
 
 # =========================
@@ -74,7 +96,7 @@ if "Dias al VTO" in df_view.columns and "Años al VTO" not in df_view.columns:
 
 cols_mostrar = [
     "Especie",
-    "Moneda",
+    "Moneda de Cobro",
     "Valor Actual",
     "Fecha de Vencimiento",
     "Años al VTO",
@@ -123,10 +145,10 @@ if monto_inicial is not None and monto_inicial > 0:
 
             st.subheader("Monto total estimado a cobrar por bono")
             st.dataframe(
-                    df_monto.style.format({
-                        "Nominales": "{:,.0f}",
-                        "Monto a Cobrar (moneda flujo)": "{:,.2f}"
-                    }),
+                df_monto.style.format({
+                    "Nominales": "{:,.0f}",
+                    "Monto a Cobrar (moneda flujo)": "{:,.2f}"
+                }),
                 use_container_width=False,
                 height=260,
             )
@@ -135,13 +157,12 @@ if monto_inicial is not None and monto_inicial > 0:
 # =========================
 # Gráfico (TNA % vs Años)
 # =========================
-# IMPORTANTE: df_curve trae "Dias al VTO" (no "Años al VTO"). El plot convierte si x_unit="years".
 if df_curve is not None and not df_curve.empty and "Dias al VTO" in df_curve.columns and "TNA %" in df_curve.columns:
     fig = plot_curve(
         df_curve,
         x_col="Dias al VTO",
         y_col="TNA %",
-        title="Curva de Bonos (TNA % vs Años)",
+        title=f"Curva de Bonos ({moneda_sel}) – TNA % vs Años",
         x_unit="years"
     )
     st.pyplot(fig, use_container_width=True)
