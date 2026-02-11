@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from .config import FECHA_CIERRE, BASE_ANUAL
+from .config import FECHA_CIERRE, BASE_ANUAL, PRECIO_CI_SOBRE_RESIDUAL
 from .io_bonos import read_master_bonos
 from .formatting import build_view_df_bonos
 
@@ -112,8 +112,29 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
 
     fc = pd.to_datetime(FECHA_CIERRE)
 
-    # quedarnos solo con flujos >= cierre
+    # -------------------------------------------------
+    # Filtrar bonos: solo los que tienen flujos futuros
+    # y precio CI válido en el JSON
+    # -------------------------------------------------
+    # flujos futuros
     flujos_fut = flujos[flujos["fecha_pago"] >= fc].copy()
+
+    codigos_con_flujos = set(flujos_fut["codigo"].dropna().astype(str).str.upper())
+    codigos_con_precio = set(
+        k.strip().upper()
+        for k, v in precios_ci.items()
+        if v is not None and str(v).strip() != "" and pd.to_numeric(v, errors="coerce") is not None
+        and np.isfinite(pd.to_numeric(v, errors="coerce"))
+        and float(pd.to_numeric(v, errors="coerce")) > 0
+    )
+
+    codigos_validos = codigos_con_flujos.intersection(codigos_con_precio)
+
+    # Aplicar filtro al master
+    master = master[master["codigo"].astype(str).str.upper().isin(codigos_validos)].copy()
+    master = master[master["moneda"] == "USD"].copy()
+
+    # quedarnos solo con flujos >= cierre
     flujos_fut["flujo_total_por_vn100"] = (
         flujos_fut["interes_por_vn100"].fillna(0) + flujos_fut["amortizacion_por_vn100"].fillna(0)
     )
@@ -123,13 +144,39 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
         codigo = str(bono["codigo"]).upper().strip()
         moneda = str(bono["moneda"]).upper().strip()
 
-        precio_ci = precios_ci.get(codigo)
+        # -------------------------
+        # Valor residual (capital vivo)
+        # -------------------------
+        valor_residual = bono.get("valor_residual", np.nan)
         try:
-            precio_ci = float(precio_ci)
+            valor_residual = float(valor_residual)
         except Exception:
+            valor_residual = np.nan
+
+        # fallback seguro
+        if not np.isfinite(valor_residual) or valor_residual <= 0:
+            valor_residual = 100.0
+
+        ratio_residual = valor_residual / 100.0
+
+        precio_ci_raw = precios_ci.get(codigo)
+        try:
+            precio_ci_raw = float(precio_ci_raw)
+        except Exception:
+            precio_ci_raw = np.nan
+
+        # Precio equivalente por VN100 original:
+        # - si el JSON viene sobre residual, lo convertimos
+        # - si ya viene sobre VN100 original, lo dejamos igual
+        if np.isfinite(precio_ci_raw):
+            if PRECIO_CI_SOBRE_RESIDUAL:
+                precio_ci = precio_ci_raw * ratio_residual
+            else:
+                precio_ci = precio_ci_raw
+        else:
             precio_ci = np.nan
 
-        g = flujos_fut[flujos_fut["codigo"] == codigo].sort_values("fecha_pago")
+        g = flujos_fut[(flujos_fut["codigo"] == codigo) & (flujos_fut["moneda_flujo"] == moneda)].sort_values("fecha_pago")
         if g.empty or not np.isfinite(precio_ci) or precio_ci <= 0:
             rows.append({
                 "codigo": codigo,
@@ -146,16 +193,20 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
             })
             continue
 
+        # Construir flujos para TIR
+        fechas = [fc] + list(g["fecha_pago"])
+        montos = [-precio_ci] + list(g["flujo_total_por_vn100"])
+
+        tir = xirr_base360(fechas, montos)
+
+        if np.isfinite(tir):
+            tna_pct = tir * 100.0
+        else:
+            tna_pct = np.nan
+
         total_flujo = float(g["flujo_total_por_vn100"].sum())
         fecha_final = g["fecha_pago"].max()
         dias_final = _days_from_close(fecha_final)
-
-        # TNA (aprox) anualizada simple a vencimiento:
-        # TNA% ≈ ((TotalFlujos/Precio) - 1) * (360 / días) * 100
-        if np.isfinite(dias_final) and dias_final > 0:
-            tna_pct = ((total_flujo / precio_ci) - 1.0) * (BASE_ANUAL / dias_final) * 100.0
-        else:
-            tna_pct = np.nan
 
         rows.append({
             "codigo": codigo,

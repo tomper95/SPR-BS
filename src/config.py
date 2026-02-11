@@ -3,8 +3,9 @@ from pathlib import Path
 # =========================
 # Parámetros globales
 # =========================
-FECHA_CIERRE = "2026-02-06"   # fijo (simulado por ahora)
+FECHA_CIERRE = "2026-02-11"   # fijo (simulado por ahora)
 BASE_ANUAL = 360             # fijo (para TNA/TIR base 360)
+PRECIO_CI_SOBRE_RESIDUAL = False
 
 # =========================
 # Paths del repo
