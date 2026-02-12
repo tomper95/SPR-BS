@@ -56,12 +56,19 @@ def plot_curve(
     labels_ok = labels[mask]
 
     if len(x_ok) >= 2:
-        m, b = np.polyfit(x_ok, y_ok, 1)
-        x_line = np.linspace(x_ok.min(), x_ok.max(), 200)
-        y_line = m * x_line + b
-        ax.plot(x_line, y_line, color="white", linewidth=2, alpha=0.8, label="Curva teórica")
+        # =========================
+        # Ajuste log suave: y = a*ln(1+x) + b
+        # - funciona bien con mezcla de plazos cortos/largos
+        # - evita problemas cerca de 0 usando ln(1+x)
+        # =========================
+        x_fit = np.log1p(np.clip(x_ok, 0, None))  # ln(1+x), con x>=0
+        a, b = np.polyfit(x_fit, y_ok, 1)
 
-        y_teorica = m * x_ok + b
+        x_line = np.linspace(max(0.0, x_ok.min()), x_ok.max(), 200)
+        y_line = a * np.log1p(x_line) + b
+        ax.plot(x_line, y_line, color="white", linewidth=2, alpha=0.8, label="Curva teórica (log)")
+
+        y_teorica = a * np.log1p(x_ok) + b
         above = y_ok >= y_teorica
         below = ~above
 
