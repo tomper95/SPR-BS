@@ -113,22 +113,22 @@ BA37D,2036-03-01,19.0,0.63,4.67,USD,interes + amortizacion
 BA37D,2036-09-01,14.33,0.47,4.67,USD,interes + amortizacion
 BA37D,2037-03-01,9.66,0.32,4.83,USD,interes + amortizacion
 BA37D,2037-09-01,4.83,0.16,4.83,USD,interes + amortizacion
-BPOA7,2026-04-30,100.0,2.5,0.0,ARS,interes
-BPOA7,2026-10-30,100.0,2.5,0.0,ARS,interes
-BPOA7,2027-04-30,100.0,2.5,50.0,ARS,interes + amortizacion
-BPOA7,2027-10-30,50.0,1.25,50.0,ARS,interes + amortizacion
-BPOB7,2026-04-30,100.0,2.5,0.0,ARS,interes
-BPOB7,2026-10-30,100.0,2.5,0.0,ARS,interes
-BPOB7,2027-04-30,100.0,2.5,50.0,ARS,interes + amortizacion
-BPOB7,2027-10-30,50.0,1.25,50.0,ARS,interes + amortizacion
-BPOC7,2026-04-30,100.0,2.49,0.0,ARS,interes
-BPOC7,2026-10-30,100.0,2.51,0.0,ARS,interes
-BPOC7,2027-04-30,100.0,2.49,50.0,ARS,interes + amortizacion
-BPOC7,2027-10-30,50.0,1.25,50.0,ARS,interes + amortizacion
-BPOD7,2026-04-30,100.0,2.5,0.0,ARS,interes
-BPOD7,2026-10-30,100.0,2.5,0.0,ARS,interes
-BPOD7,2027-04-30,100.0,2.5,50.0,ARS,interes + amortizacion
-BPOD7,2027-10-31,50.0,1.26,50.0,ARS,interes + amortizacion
+BPA7D,2026-04-30,100.0,2.5,0.0,ARS,interes
+BPA7D,2026-10-30,100.0,2.5,0.0,ARS,interes
+BPA7D,2027-04-30,100.0,2.5,50.0,ARS,interes + amortizacion
+BPA7D,2027-10-30,50.0,1.25,50.0,ARS,interes + amortizacion
+BPB7D,2026-04-30,100.0,2.5,0.0,ARS,interes
+BPB7D,2026-10-30,100.0,2.5,0.0,ARS,interes
+BPB7D,2027-04-30,100.0,2.5,50.0,ARS,interes + amortizacion
+BPB7D,2027-10-30,50.0,1.25,50.0,ARS,interes + amortizacion
+BPC7D,2026-04-30,100.0,2.49,0.0,ARS,interes
+BPC7D,2026-10-30,100.0,2.51,0.0,ARS,interes
+BPC7D,2027-04-30,100.0,2.49,50.0,ARS,interes + amortizacion
+BPC7D,2027-10-30,50.0,1.25,50.0,ARS,interes + amortizacion
+BPD7D,2026-04-30,100.0,2.5,0.0,ARS,interes
+BPD7D,2026-10-30,100.0,2.5,0.0,ARS,interes
+BPD7D,2027-04-30,100.0,2.5,50.0,ARS,interes + amortizacion
+BPD7D,2027-10-31,50.0,1.26,50.0,ARS,interes + amortizacion
 BPY26,2026-02-28,67.0,0.49,33.0,ARS,interes + amortizacion
 BPY26,2026-05-31,34.0,0.26,34.0,ARS,interes + amortizacion
 CS38O,2026-03-03,100.0,1.29,100.0,USD,interes + amortizacion
