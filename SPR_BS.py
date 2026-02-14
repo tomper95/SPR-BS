@@ -16,6 +16,12 @@ st.set_page_config(layout="wide")
 st.title("SPR – Bonos Soberanos")
 st.caption(f"Cierre simulado: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
 
+tipo_sel = st.sidebar.radio(
+    "Tipo de instrumento:",
+    options=["SOBERANO", "ON"],
+    index=0,
+)
+
 # =========================
 # Selector moneda (USD / ARS)
 # Moneda = moneda de cobro (moneda_flujo)
@@ -78,6 +84,8 @@ df_view, df_curve = run_engine_bonos(
 # Nota: en formatting.py la columna se llama "Moneda de Cobro"
 if "Moneda de Cobro" in df_view.columns:
     df_view = df_view[df_view["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
+if "Tipo" in df_view.columns:
+    df_view = df_view[df_view["Tipo"].astype(str).str.upper() == tipo_sel].copy()
 
 # df_curve no trae moneda, filtramos por especies presentes en la tabla
 if df_curve is not None and not df_curve.empty and "Especie" in df_view.columns:

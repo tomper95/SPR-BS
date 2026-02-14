@@ -15,6 +15,10 @@ def read_master_bonos(xlsx_path: str, sheet_name: str = "master_bono") -> pd.Dat
 
     df["codigo"] = df["codigo"].astype(str).str.strip().str.upper()
     df["moneda"] = df["moneda"].astype(str).str.strip().str.upper()
+    # tipo_instrumento es opcional (default SOBERANO si no está)
+    if "tipo_instrumento" not in df.columns:
+        df["tipo_instrumento"] = "SOBERANO"
+    df["tipo_instrumento"] = df["tipo_instrumento"].astype(str).str.strip().str.upper()
 
     df["fecha_emision"] = pd.to_datetime(df["fecha_emision"], errors="coerce")
     df["fecha_vto"] = pd.to_datetime(df["fecha_vto"], errors="coerce")

@@ -6,6 +6,7 @@ import pandas as pd
 
 BONOS_COLUMN_MAP = {
     "codigo": "Especie",
+    "tipo_instrumento": "Tipo",
     "moneda": "Moneda de Cobro",
     "precio_ci": "Valor Actual",
     "fecha_final": "Fecha de Vencimiento",
@@ -17,6 +18,7 @@ BONOS_COLUMN_MAP = {
 
 BONOS_ORDER_COLS = [
     "codigo",
+    "tipo_instrumento",
     "moneda",
     "precio_ci",
     "fecha_final",
@@ -36,7 +38,8 @@ def build_view_df_bonos(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFram
     # -----------------------------------------------------
     # Base
     # -----------------------------------------------------
-    df = df_raw[BONOS_ORDER_COLS].copy()
+    cols = [c for c in BONOS_ORDER_COLS if c in df_raw.columns]
+    df = df_raw[cols].copy()
 
     # -----------------------------------------------------
     # Tipos

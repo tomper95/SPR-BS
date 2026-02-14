@@ -141,6 +141,7 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
     rows = []
     for _, bono in master.iterrows():
         codigo = str(bono["codigo"]).upper().strip()
+        tipo_instrumento = str(bono.get("tipo_instrumento", "SOBERANO")).strip().upper()
         # Tomamos flujos solo por codigo (la moneda real viene del flujo)
         g = flujos_fut[flujos_fut["codigo"] == codigo].sort_values("fecha_pago")
         if g.empty:
@@ -183,6 +184,7 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
         if g.empty or not np.isfinite(precio_ci) or precio_ci <= 0:
             rows.append({
                 "codigo": codigo,
+                "tipo_instrumento": tipo_instrumento,
                 "moneda": moneda_flujo,
                 "precio_ci": precio_ci,
 
@@ -213,6 +215,7 @@ def run_engine_bonos(master_xlsx_path: str, flujos_csv_path: str, precios_ci: di
 
         rows.append({
             "codigo": codigo,
+            "tipo_instrumento": tipo_instrumento,
             "moneda": moneda_flujo,
             "precio_ci": precio_ci,
 
