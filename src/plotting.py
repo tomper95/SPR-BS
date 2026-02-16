@@ -1,6 +1,4 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
+from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,83 +7,97 @@ from matplotlib.ticker import MultipleLocator
 
 def plot_curve(
     df_curve,
-    x_col="Dias al VTO",
-    y_col="TNA %",
-    label_col="Especie",
+    x_col: str = "Dias al VTO",
+    y_col: str = "TNA %",
+    label_col: str = "Especie",
     title: str | None = None,
     x_unit: str = "years",  # "years" o "days"
+    annotate: bool = True,
+    max_labels: int = 30,
 ):
-    plt.style.use("dark_background")
+    """Grafica curva (TNA % vs tiempo) con una curva teórica logarítmica y coloreo:
+    - Verde: bono sobre la curva teórica
+    - Rojo: bono bajo la curva teórica
 
-    x = df_curve[x_col].astype(float).values
-    y = df_curve[y_col].astype(float).values
-    labels = df_curve[label_col].astype(str).values
+    Notas:
+    - x_col se espera en días (recomendado). Si x_unit == "years" se convierte.
+    - annotate: muestra labels (si hay pocos puntos, evita caos).
+    """
+    df = df_curve.copy()
 
-    # =========================
-    # Convertir eje X (días -> años)
-    # =========================
+    # Limpiar x/y
+    x = np.array(df[x_col], dtype=float)
+    y = np.array(df[y_col], dtype=float)
+
+    # Convertir a años si corresponde (solo para el eje)
     if x_unit == "years":
-        x = x / 365.0
+        x_plot = x / 365.0
         x_label = "Años al Vencimiento"
-        x_major = 1.0   # 1 año
-        x_minor = 0.5   # 6 meses
     else:
-        x_label = x_col
-        x_major = 30.0  # 30 días
-        x_minor = 15.0  # 15 días
+        x_plot = x
+        x_label = "Días al Vencimiento"
 
-    fig, ax = plt.subplots(figsize=(14, 7))
-    ax.grid(True, alpha=0.25)
-    fig.tight_layout()
+    # Filtrar NaNs / inf
+    ok = np.isfinite(x_plot) & np.isfinite(y) & (x_plot > 0)
+    x_ok = x_plot[ok]
+    y_ok = y[ok]
 
-    # =========================
-    # Ticks del eje X
-    # =========================
-    ax.xaxis.set_major_locator(MultipleLocator(x_major))
-    ax.xaxis.set_minor_locator(MultipleLocator(x_minor))
+    labels_ok = None
+    if label_col in df.columns:
+        labels_ok = df.loc[ok, label_col].astype(str).tolist()
 
-    ax.tick_params(axis="x", which="major", length=6)
-    ax.tick_params(axis="x", which="minor", length=3)
+    # Orden por X
+    order = np.argsort(x_ok)
+    x_ok = x_ok[order]
+    y_ok = y_ok[order]
+    if labels_ok is not None:
+        labels_ok = [labels_ok[i] for i in order]
 
-    ax.grid(True, axis="x", which="major", linestyle="--", alpha=0.25)
-    ax.grid(True, axis="y", which="major", alpha=0.25)
+    # --- Ajuste logarítmico (suave) ---
+    # Modelo: y = a + b * log(x)
+    y_hat = None
+    xx = None
+    yy = None
+    if len(x_ok) >= 3:
+        x_safe = np.clip(x_ok, 1e-6, None)
+        coeffs = np.polyfit(np.log(x_safe), y_ok, deg=1)
+        y_hat = np.polyval(coeffs, np.log(x_safe))
 
-    # ===== curva de tendencia =====
-    mask = np.isfinite(x) & np.isfinite(y)
-    x_ok, y_ok = x[mask], y[mask]
-    labels_ok = labels[mask]
+        xx = np.linspace(x_ok.min(), x_ok.max(), 250)
+        yy = np.polyval(coeffs, np.log(np.clip(xx, 1e-6, None)))
 
-    if len(x_ok) >= 2:
-        # =========================
-        # Ajuste log suave: y = a*ln(1+x) + b
-        # - funciona bien con mezcla de plazos cortos/largos
-        # - evita problemas cerca de 0 usando ln(1+x)
-        # =========================
-        x_fit = np.log1p(np.clip(x_ok, 0, None))  # ln(1+x), con x>=0
-        a, b = np.polyfit(x_fit, y_ok, 1)
+    # --- Plot ---
+    plt.style.use("dark_background")
+    fig, ax = plt.subplots(figsize=(11, 5))
 
-        x_line = np.linspace(max(0.0, x_ok.min()), x_ok.max(), 200)
-        y_line = a * np.log1p(x_line) + b
-        ax.plot(x_line, y_line, color="white", linewidth=2, alpha=0.8, label="Curva teórica (log)")
-
-        y_teorica = a * np.log1p(x_ok) + b
-        above = y_ok >= y_teorica
+    if y_hat is not None:
+        above = y_ok >= y_hat
         below = ~above
 
-        ax.scatter(x_ok[above], y_ok[above], color="#00ff88", s=70, edgecolors="black", label="Sobre la curva")
-        ax.scatter(x_ok[below], y_ok[below], color="#ff5555", s=70, edgecolors="black", label="Bajo la curva")
+        ax.scatter(x_ok[above], y_ok[above], color="lime", label="Sobre la curva")
+        ax.scatter(x_ok[below], y_ok[below], color="red", label="Bajo la curva")
 
-        for xi, yi, lab in zip(x_ok, y_ok, labels_ok):
-            ax.annotate(lab, (xi, yi), textcoords="offset points", xytext=(6, 4), fontsize=9, alpha=0.9)
+        ax.plot(xx, yy, color="white", linewidth=2, label="Curva teórica (log)")
+        ax.legend(loc="upper left", framealpha=0.2)
     else:
-        ax.scatter(x, y, s=70, edgecolors="black")
+        ax.scatter(x_ok, y_ok)
+
+    # Etiquetas
+    if annotate and labels_ok is not None:
+        if len(labels_ok) <= max_labels:
+            for xi, yi, lab in zip(x_ok, y_ok, labels_ok):
+                ax.annotate(lab, (xi, yi), textcoords="offset points", xytext=(6, 4), fontsize=9, alpha=0.9)
 
     ax.set_xlabel(x_label)
-    ax.set_ylabel(y_col)
+    ax.set_ylabel("TNA %")
+    if title:
+        ax.set_title(title)
 
-    if title is None:
-        title = f"Curva de Bonos ({y_col} vs {x_label})"
-    ax.set_title(title)
-    ax.legend()
+    ax.grid(True, alpha=0.25)
 
+    if x_unit == "years":
+        ax.xaxis.set_major_locator(MultipleLocator(1))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.5))
+
+    fig.tight_layout()
     return fig

@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from pathlib import Path
 from datetime import datetime
 
 # =========================
 # Parámetros globales
 # =========================
-USE_SYSTEM_DATE = False  # True = usa fecha real del sistema, False = usa FECHA_CIERRE fija
+USE_SYSTEM_DATE = False  # True = usa fecha real del sistema (producción), False = usa fecha fija (simulación)
 
-FECHA_CIERRE_FIJA = "2026-02-16"  # simulación / testing
+FECHA_CIERRE_FIJA = "2026-02-16"  # simulación / testing (YYYY-MM-DD)
 
 FECHA_CIERRE = (
     datetime.now().strftime("%Y-%m-%d")
@@ -16,7 +18,7 @@ FECHA_CIERRE = (
 
 TC_ARS_USD = 1433.30
 
-BASE_ANUAL = 360             # fijo (para TNA/TIR base 360)
+BASE_ANUAL = 360                 # fijo (para TNA/TIR base 360)
 PRECIO_CI_SOBRE_RESIDUAL = False
 
 # =========================
@@ -33,5 +35,8 @@ MASTER_CSV_PATH = str(DATA_DIR / "instrumentos_master.csv")
 PRECIOS_CI_JSON_PATH = str(DATA_DIR / "precios_ci.json")
 
 # --- BONOS SOBERANOS (SPR_BS) ---
-BONOS_MASTER_PATH = str(REPO_ROOT / "data" / "SPR_BS_master.xlsx")
+BONOS_MASTER_PATH = str(DATA_DIR / "SPR_BS_master.xlsx")  # sheet: master_bono
+
+# Flujos (acepta .csv o .xlsx)
+# Recomendado: usar .xlsx si estás manteniendo flujos en Excel
 BONOS_FLUJOS_PATH = str(DATA_DIR / "bonos_flujos.xlsx")

@@ -1,20 +1,21 @@
+from __future__ import annotations
+
 import pandas as pd
 
-# =========================================================
-# FORMATTING – BONOS SOBERANOS (SPR_BS)
-# =========================================================
-
+# =========================
+# Column mapping (interno -> UI)
+# =========================
 BONOS_COLUMN_MAP = {
     "codigo": "Especie",
     "tipo_instrumento": "Tipo",
     "moneda": "Moneda de Cobro",
     "precio_ci": "Valor Actual",
     "fecha_final": "Fecha de Vencimiento",
-    "Tiempo_al_vto" : "Tiempo al Vencimiento",
-    "TNA_%": "TNA %",
+    "Dias_al_vto": "_Dias_al_vto",              # interno (no mostrar)
+    "Tiempo_al_vto": "Tiempo al Vencimiento",
     "plazo": "Plazo",
-    # columna interna (NO mostrar en tabla principal)
-    "total_flujo_por_vn100": "_total_flujo_por_vn100",
+    "TNA_%": "TNA %",
+    "total_flujo_por_vn100": "_total_flujo_por_vn100",  # interno para cálculos de monto
 }
 
 BONOS_ORDER_COLS = [
@@ -25,120 +26,96 @@ BONOS_ORDER_COLS = [
     "fecha_final",
     "Dias_al_vto",
     "Tiempo_al_vto",
-    "TNA_%",
     "plazo",
+    "TNA_%",
     "total_flujo_por_vn100",
 ]
 
 
-def build_view_df_bonos(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Devuelve:
-    - df_view: DataFrame listo para UI (columnas claras, sin ruido)
-    - df_curve: DataFrame mínimo para gráfico (Dias vs TNA)
-    """
+def _fmt_tiempo_desde_dias(dias: float | int | None) -> str:
+    if dias is None or pd.isna(dias):
+        return ""
+    try:
+        dias_f = float(dias)
+    except Exception:
+        return ""
+    if dias_f < 0:
+        return ""
 
-    # -----------------------------------------------------
-    # Base
-    # -----------------------------------------------------
-    cols = [c for c in BONOS_ORDER_COLS if c in df_raw.columns]
-    df = df_raw[cols].copy()
+    meses_total = int(round(dias_f / 30.4375))  # 365.25/12
+    anios = meses_total // 12
+    meses = meses_total % 12
 
-    # -----------------------------------------------------
-    # Tipos
-    # -----------------------------------------------------
+    if anios <= 0:
+        return f"{meses} Meses" if meses != 1 else "1 Mes"
+    if meses == 0:
+        return f"{anios} Años" if anios != 1 else "1 Año"
+
+    a_txt = "Año" if anios == 1 else "Años"
+    m_txt = "Mes" if meses == 1 else "Meses"
+    return f"{anios} {a_txt} y {meses} {m_txt}"
+
+
+def _plazo_desde_dias(dias: float | int | None) -> str:
+    if dias is None or pd.isna(dias):
+        return ""
+    try:
+        anios = float(dias) / 365.0
+    except Exception:
+        return ""
+    if anios <= 2:
+        return "CORTO"
+    if anios <= 7:
+        return "MEDIANO"
+    return "LARGO"
+
+
+def build_view_df_bonos(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Toma el output del engine (interno) y construye:
+    - df_view: tabla para UI (con columnas renombradas y algunas internas)
+    - df_curve: tabla para curva (Especie, Dias al VTO, TNA %)
+    """
+    df = out.copy()
+
+    # Normalizar tipos
+    df["codigo"] = df["codigo"].astype(str).str.strip().str.upper()
+    df["moneda"] = df["moneda"].astype(str).str.strip().str.upper()
+    df["tipo_instrumento"] = df["tipo_instrumento"].astype(str).str.strip().str.upper()
+
     df["fecha_final"] = pd.to_datetime(df["fecha_final"], errors="coerce")
 
-    for c in ["precio_ci", "total_flujo_por_vn100", "TNA_%"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in ["precio_ci", "total_flujo_por_vn100", "Dias_al_vto", "TNA_%"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df["Dias_al_vto"] = (
-        pd.to_numeric(df["Dias_al_vto"], errors="coerce")
-        .round(0)
-        .astype("Int64")
-    )
+    # Tiempo al vencimiento + plazo
+    df["Tiempo_al_vto"] = df["Dias_al_vto"].apply(_fmt_tiempo_desde_dias)
+    df["plazo"] = df["Dias_al_vto"].apply(_plazo_desde_dias)
 
-    # -----------------------------------------------------
-    # Tiempo hasta vencimiento
-    # -----------------------------------------------------
-    dias = pd.to_numeric(df["Dias_al_vto"], errors="coerce")
+    # Orden columnas internas
+    cols = [c for c in BONOS_ORDER_COLS if c in df.columns]
+    df = df[cols].copy()
 
-    # -----------------------------------------------------
-    # Tiempo hasta vencimiento (sin decimales engañosos)
-    # -----------------------------------------------------
-    dias = pd.to_numeric(df["Dias_al_vto"], errors="coerce")
+    # Renombrar (UI)
+    df_view = df.rename(columns=BONOS_COLUMN_MAP)
 
-    # Para segmentación (exacto, sin redondear)
-    df["Anios_al_vto"] = dias / 365.0
+    # Fecha de vencimiento solo fecha (sin hora) para UI
+    if "Fecha de Vencimiento" in df_view.columns:
+        df_view["Fecha de Vencimiento"] = pd.to_datetime(df_view["Fecha de Vencimiento"], errors="coerce").dt.date
 
-    # Para display (meses enteros)
-    meses_total = (dias / 30.4375).round(0).astype("Int64")  # 365.25/12
-    df["Meses_al_vto"] = meses_total
+    # Curva: años vs tna, pero dejamos días para que plot_curve convierta
+    df_curve = pd.DataFrame({
+        "Especie": df_view["Especie"],
+        "Dias al VTO": df_view["_Dias_al_vto"],
+        "TNA %": df_view["TNA %"],
+    })
 
-    anios = (meses_total // 12).astype("Int64")
-    meses = (meses_total % 12).astype("Int64")
-
-    def _fmt_tiempo(a, m):
-        if pd.isna(a) or pd.isna(m):
-            return ""
-        a = int(a)
-        m = int(m)
-        if a <= 0:
-            return f"{m} Meses"
-        if m == 0:
-            return f"{a} Años"
-        # singular/plural simple
-        a_txt = "Año" if a == 1 else "Años"
-        m_txt = "Mes" if m == 1 else "Meses"
-        return f"{a} {a_txt} y {m} {m_txt}"
-
-    df["Tiempo_al_vto"] = [_fmt_tiempo(a, m) for a, m in zip(anios, meses)]
-
-    # -----------------------------------------------------
-    # Plazo (Corto / Mediano / Largo)
-    # -----------------------------------------------------
-    def _plazo(a):
-        if pd.isna(a):
-            return ""
-        if a <= 2:
-            return "CORTO"
-        if a <= 7:
-            return "MEDIANO"
-        return "LARGO"
-
-    df["plazo"] = df["Anios_al_vto"].apply(_plazo)
-
-    # -----------------------------------------------------
-    # Redondeos
-    # -----------------------------------------------------
-    df["precio_ci"] = df["precio_ci"].round(2)
-    df["total_flujo_por_vn100"] = df["total_flujo_por_vn100"].round(4)
-    df["TNA_%"] = df["TNA_%"].round(2)
-
-    # -----------------------------------------------------
-    # DataFrame para gráfico
-    # -----------------------------------------------------
-    df_curve = (
-        df[["codigo", "Dias_al_vto", "TNA_%"]]
-        .copy()
-        .rename(
-            columns={
-                "codigo": "Especie",
-                "Dias_al_vto": "Dias al VTO",
-                "TNA_%": "TNA %",
-            }
-        )
-    )
-
-    # -----------------------------------------------------
-    # DataFrame para vista
-    # -----------------------------------------------------
-    df_view = df.copy()
-    df_view["fecha_final"] = df_view["fecha_final"].dt.date
-
-    df_view = df_view.rename(columns=BONOS_COLUMN_MAP)
-    df_view["TNA %"] = df_view["TNA %"].apply(
-        lambda v: f"{v:.2f}%" if pd.notna(v) else ""
-    )
+    # También preservamos "Tipo" y "Moneda de Cobro" en df_curve si existen (por si querés filtrar)
+    if "Tipo" in df_view.columns:
+        df_curve["Tipo"] = df_view["Tipo"]
+    if "Moneda de Cobro" in df_view.columns:
+        df_curve["Moneda de Cobro"] = df_view["Moneda de Cobro"]
+    if "Plazo" in df_view.columns:
+        df_curve["Plazo"] = df_view["Plazo"]
 
     return df_view, df_curve

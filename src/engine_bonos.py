@@ -14,12 +14,16 @@ REQUIRED_FLUJOS_COLS = [
     "moneda_flujo",
 ]
 
-def _read_bonos_flujos(xlsx_path: str) -> pd.DataFrame:
-    df = pd.read_excel(xlsx_path, engine="openpyxl")
+def _read_bonos_flujos(flujos_path: str) -> pd.DataFrame:
+    # Admite .csv o .xlsx
+    if str(flujos_path).lower().endswith(('.xlsx', '.xls')):
+        df = pd.read_excel(flujos_path, engine='openpyxl')
+    else:
+        df = pd.read_csv(flujos_path, encoding='utf-8-sig')
 
     missing = [c for c in REQUIRED_FLUJOS_COLS if c not in df.columns]
     if missing:
-        raise ValueError(f"Faltan columnas en bonos_flujos: {missing}")
+        raise ValueError(f"Faltan columnas en flujos de bonos: {missing}")
 
     df["codigo"] = df["codigo"].astype(str).str.strip().str.upper()
     df["fecha_pago"] = pd.to_datetime(df["fecha_pago"], errors="coerce")
@@ -33,8 +37,10 @@ def _read_bonos_flujos(xlsx_path: str) -> pd.DataFrame:
     return df
 
 def _days_from_close(d: pd.Timestamp) -> float:
+    """Días corridos desde FECHA_CIERRE hasta d."""
     fc = pd.to_datetime(FECHA_CIERRE)
     return float((pd.to_datetime(d) - fc).days)
+
 
 def xirr_base360(dates: list[pd.Timestamp], amounts: list[float], guess: float = 0.5) -> float:
     """IRR con base 360 usando potencias (1+r)^(dias/BASE_ANUAL). Devuelve r (decimal)."""
@@ -100,7 +106,7 @@ def xirr_base360(dates: list[pd.Timestamp], amounts: list[float], guess: float =
 
     return mid
 
-def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Bonos soberanos:
       - Precio CI manual desde JSON (por VN100)
@@ -115,8 +121,9 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
     # -------------------------------------------------
     # Excluir instrumentos vencidos (validación temporal)
     # -------------------------------------------------
-    master["fecha_vto"] = pd.to_datetime(master["fecha_vto"], errors="coerce")
-    master = master[master["fecha_vto"] > fc].copy()
+    if "fecha_vto" in master.columns:
+        master["fecha_vto"] = pd.to_datetime(master["fecha_vto"], errors="coerce")
+        master = master[master["fecha_vto"] > fc].copy()
 
     # -------------------------------------------------
     # Filtrar bonos: solo los que tienen flujos futuros
@@ -124,7 +131,6 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
     # -------------------------------------------------
     # flujos futuros
     flujos_fut = flujos[flujos["fecha_pago"] >= fc].copy()
-
     codigos_con_flujos = set(flujos_fut["codigo"].dropna().astype(str).str.upper())
     codigos_con_precio = set(
         k.strip().upper()
@@ -238,4 +244,4 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
     out = out.sort_values(["Dias_al_vto","codigo"], na_position="last").reset_index(drop=True)
     
     df_view, df_curve = build_view_df_bonos(out)
-    return df_view, df_curve
+    return df_view, df_curve, flujos_fut
