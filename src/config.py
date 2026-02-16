@@ -1,9 +1,19 @@
 from pathlib import Path
+from datetime import datetime
 
 # =========================
 # Parámetros globales
 # =========================
-FECHA_CIERRE = "2026-02-16"   # fijo (simulado por ahora)
+USE_SYSTEM_DATE = False  # True = usa fecha real del sistema, False = usa FECHA_CIERRE fija
+
+FECHA_CIERRE_FIJA = "2026-02-16"  # simulación / testing
+
+FECHA_CIERRE = (
+    datetime.now().strftime("%Y-%m-%d")
+    if USE_SYSTEM_DATE
+    else FECHA_CIERRE_FIJA
+)
+
 TC_ARS_USD = 1433.30
 
 BASE_ANUAL = 360             # fijo (para TNA/TIR base 360)

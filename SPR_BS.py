@@ -4,17 +4,17 @@ import streamlit as st
 import numpy as np
 
 from pathlib import Path
-from src.config import FECHA_CIERRE, BASE_ANUAL, BONOS_MASTER_PATH, BONOS_FLUJOS_PATH
+from src.config import FECHA_CIERRE, BASE_ANUAL, BONOS_MASTER_PATH, BONOS_FLUJOS_PATH, USE_SYSTEM_DATE, PRECIOS_CI_JSON_PATH
 from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
-
 
 # =========================
 # Config UI
 # =========================
 st.set_page_config(layout="wide")
 st.title("SPR – Bonos Soberanos")
-st.caption(f"Cierre simulado: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
+modo = "Fecha real" if USE_SYSTEM_DATE else "Simulación"
+st.caption(f"{modo}: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
 
 tipo_sel = st.sidebar.radio(
     "Tipo de instrumento:",
@@ -35,7 +35,7 @@ moneda_sel = st.sidebar.radio(
 # =========================
 # Cargar PRECIOS_CI (JSON)
 # =========================
-PRECIOS_CI_PATH = Path("data/precios_ci.json")
+PRECIOS_CI_PATH = Path(PRECIOS_CI_JSON_PATH)
 
 try:
     PRECIOS_CI = json.loads(PRECIOS_CI_PATH.read_text(encoding="utf-8"))
