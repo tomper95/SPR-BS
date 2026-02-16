@@ -32,6 +32,12 @@ moneda_sel = st.sidebar.radio(
     index=0,
 )
 
+plazo_sel = st.sidebar.radio(
+    "Plazo:",
+    options=["TODOS", "CORTO", "MEDIANO", "LARGO"],
+    index=0,
+)
+
 # =========================
 # Cargar PRECIOS_CI (JSON)
 # =========================
@@ -86,6 +92,8 @@ if "Moneda de Cobro" in df_view.columns:
     df_view = df_view[df_view["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
 if "Tipo" in df_view.columns:
     df_view = df_view[df_view["Tipo"].astype(str).str.upper() == tipo_sel].copy()
+if plazo_sel != "TODOS" and "Plazo" in df_view.columns:
+    df_view = df_view[df_view["Plazo"].astype(str).str.upper() == plazo_sel].copy()
 
 # df_curve no trae moneda, filtramos por especies presentes en la tabla
 if df_curve is not None and not df_curve.empty and "Especie" in df_view.columns:
@@ -97,17 +105,13 @@ if df_curve is not None and not df_curve.empty and "Especie" in df_view.columns:
 # =========================
 # Tabla principal (limpia)
 # =========================
-# Si no existe "Años al VTO" (normal), lo calculamos acá a partir de "Dias al VTO"
-if "Dias al VTO" in df_view.columns and "Años al VTO" not in df_view.columns:
-    dias = pd.to_numeric(df_view["Dias al VTO"], errors="coerce")
-    df_view["Años al VTO"] = (dias / 365.0).round(2)
-
 cols_mostrar = [
     "Especie",
     "Moneda de Cobro",
+    "Plazo",
     "Valor Actual",
     "Fecha de Vencimiento",
-    "Años al VTO",
+    "Tiempo al Vencimiento",
     "TNA %",
 ]
 
