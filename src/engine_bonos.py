@@ -15,7 +15,7 @@ REQUIRED_FLUJOS_COLS = [
 ]
 
 def _read_bonos_flujos(csv_path: str) -> pd.DataFrame:
-    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+    df = pd.read_excel(csv_path, engine="openpyxl")
 
     missing = [c for c in REQUIRED_FLUJOS_COLS if c not in df.columns]
     if missing:
