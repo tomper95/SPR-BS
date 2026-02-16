@@ -32,7 +32,7 @@ st.caption(f"{modo}: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
 # =========================
 tipo_sel = st.sidebar.radio(
     "Tipo de instrumento:",
-    options=["SOBERANO", "ON"],
+    options=["LECAP", "BONCAP","SOBERANO", "ON"],
     index=0,
 )
 
