@@ -30,17 +30,23 @@ st.caption(f"{modo}: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
 # =========================
 # Sidebar filtros
 # =========================
+# --- Tipo de instrumento ---
 tipo_sel = st.sidebar.radio(
     "Tipo de instrumento:",
-    options=["LECAP", "BONCAP","SOBERANO", "ON"],
-    index=0,
+    options=["LECAP", "BONCAP", "SOBERANO", "ON"],
+    index=2,  # por ejemplo arrancar en SOBERANO
 )
 
-moneda_sel = st.sidebar.radio(
-    "Mostrar bonos en:",
-    options=["USD", "ARS"],
-    index=0,
-)
+# --- Moneda (condicional) ---
+if tipo_sel in ["LECAP", "BONCAP"]:
+    moneda_sel = "ARS"          # forzado
+    st.sidebar.caption("Moneda: ARS (fija para LECAP/BONCAP)")
+else:
+    moneda_sel = st.sidebar.radio(
+        "Mostrar bonos en:",
+        options=["USD", "ARS"],
+        index=0,
+    )
 
 plazo_sel = st.sidebar.radio(
     "Plazo:",
@@ -114,16 +120,25 @@ if plazo_sel != "TODOS" and "Plazo" in df_view.columns:
 df_view_for_curve = df_view.copy()
 
 # =========================
-# Filtrar curva por especies presentes (si hay tabla)
+# Filtrar curva (MISMO criterio que la tabla)
 # =========================
 if df_curve is None:
     df_curve = pd.DataFrame()
 
 if not df_curve.empty:
-    if not df_view_for_curve.empty and "Especie" in df_view_for_curve.columns and "Especie" in df_curve.columns:
-        especies_ok = set(df_view_for_curve["Especie"].astype(str).str.upper())
-        df_curve = df_curve[df_curve["Especie"].astype(str).str.upper().isin(especies_ok)].copy()
-    # Si la tabla quedó vacía por filtros, NO filtramos la curva: mostramos el universo disponible
+    # Moneda
+    if "Moneda de Cobro" in df_curve.columns:
+        df_curve = df_curve[df_curve["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
+
+    # Tipo
+    if "Tipo" in df_curve.columns:
+        df_curve = df_curve[df_curve["Tipo"].astype(str).str.upper() == tipo_sel].copy()
+
+    # Plazo
+    if plazo_sel != "TODOS" and "Plazo" in df_curve.columns:
+        df_curve = df_curve[df_curve["Plazo"].astype(str).str.upper() == plazo_sel].copy()
+
+    # Importante: si por filtros no queda nada, NO mostramos el universo (evita puntos raros)
 
 # =========================
 # Tabs (orden visual)
@@ -200,9 +215,6 @@ with tab_resumen:
 
     st.divider()
 
-    # Curva
-    mostrar_labels = st.checkbox("Mostrar labels (bonos)", value=True)
-
     if not df_curve.empty and "Dias al VTO" in df_curve.columns and "TNA %" in df_curve.columns:
         fig = plot_curve(
             df_curve,
@@ -210,7 +222,7 @@ with tab_resumen:
             y_col="TNA %",
             title=f"Curva de Bonos ({moneda_sel}) – TNA % vs Años",
             x_unit="years",
-            annotate=mostrar_labels,
+            annotate=True,
             max_labels=40,
         )
         st.pyplot(fig, use_container_width=True)
