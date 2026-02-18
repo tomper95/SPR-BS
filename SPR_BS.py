@@ -14,6 +14,9 @@ from src.config import (
     BONOS_FLUJOS_PATH,
     USE_SYSTEM_DATE,
     PRECIOS_CI_JSON_PATH,
+    DOLAR_OFICIAL,
+    DOLAR_MEP,
+    DOLAR_CCL
 )
 from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
@@ -23,10 +26,21 @@ from src.checklist import run_checklist
 # Config UI
 # =========================
 st.set_page_config(layout="wide")
-st.title("SPR – Bonos Soberanos")
+st.title("SPR – Sistema de Precios Real")
 
 modo = "Fecha real" if USE_SYSTEM_DATE else "Simulación"
-st.caption(f"{modo}: {FECHA_CIERRE} | Base anual: {BASE_ANUAL} (fija)")
+st.caption(
+    f"📅 Fecha de referencia: {FECHA_CIERRE} | "
+    f"Modo: {modo} | "
+    f"Base anual: {BASE_ANUAL}"
+)
+
+c1, c2, c3 = st.columns(3)
+c1.metric("💵 Dólar oficial", f"{DOLAR_OFICIAL:,.2f}")
+c2.metric("💵 Dólar MEP", f"{DOLAR_MEP:,.2f}")
+c3.metric("💵 Dólar CCL", f"{DOLAR_CCL:,.2f}")
+
+st.divider()
 
 # =========================
 # Sidebar filtros
@@ -98,9 +112,6 @@ if "Tipo" in df_view.columns:
 if plazo_sel != "TODOS" and "Plazo" in df_view.columns:
     df_view = df_view[df_view["Plazo"].astype(str).str.upper() == plazo_sel].copy()
 
-# Copia para filtrar curva sin depender de cálculos de monto
-df_view_for_curve = df_view.copy()
-
 # =========================
 # Filtrar curva (MISMO criterio que la tabla)
 # =========================
@@ -134,9 +145,19 @@ tab_mercado, tab_sim, tab_bono, tab_datos = st.tabs(
 # ---------------------------------
 with tab_mercado:
     st.subheader("Mercado")
+    st.caption(
+    "Visualizá el rendimiento anual estimado de cada bono según su plazo. "
+    "La curva representa el comportamiento promedio del mercado."
+    )
+
+    st.markdown("### 📈 Curva de mercado")
 
     # Curva arriba (visual principal)
-    mostrar_labels = st.checkbox("Mostrar nombres en la curva", value=True)
+    mostrar_labels = st.checkbox(
+        "Mostrar nombres de bonos en la curva",
+        value=True,
+        help="Puede afectar la legibilidad si hay muchos bonos."
+    )
     if df_curve is None or df_curve.empty:
         st.info("No hay datos para graficar con los filtros actuales.")
     else:
@@ -150,6 +171,8 @@ with tab_mercado:
         st.pyplot(fig, use_container_width=True)
 
     st.divider()
+
+    st.markdown("### 📋 Bonos disponibles")
 
     # Tabla (soporte)
     cols_mostrar = [
@@ -189,13 +212,17 @@ with tab_mercado:
         height=460,
     )
 
+    st.caption(
+    "El rendimiento anual estimado supone que mantenés el bono hasta su vencimiento."
+    )
+
 # ---------------------------------
 # TAB 2 — SIMULACIÓN: monto -> cuánto cobro
 # ---------------------------------
 with tab_sim:
     st.subheader("Simulación")
 
-    st.caption("Ingresá un monto aproximado para estimar cuánto podrías cobrar al vencimiento.")
+    st.caption("Simulá cuánto podrías cobrar si invertís hoy y mantenés el bono hasta el vencimiento.")
     monto_input = st.text_input(
         "Monto a invertir hoy",
         value="",
@@ -254,6 +281,9 @@ with tab_sim:
 # ---------------------------------
 with tab_bono:
     st.subheader("Bono & Flujos")
+    st.caption(
+    "Detalle de pagos futuros estimados por cada VN100 del bono seleccionado."
+    )
 
     if df_view.empty or "Especie" not in df_view.columns:
         st.info("No hay bonos para mostrar detalle con los filtros actuales.")
@@ -282,7 +312,7 @@ with tab_bono:
 
             c1, c2 = st.columns(2)
             c1.metric("Moneda de cobro", moneda)
-            c2.metric("Total futuro por VN100", f"{total_vn100:,.4f}")
+            c2.metric("Total estimado a cobrar (VN100)", f"{total_vn100:,.4f}")
 
             st.dataframe(
                 det_view.rename(columns={
