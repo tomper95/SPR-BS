@@ -16,10 +16,6 @@ FECHA_CIERRE = (
     else FECHA_CIERRE_FIJA
 )
 
-DOLAR_OFICIAL = 1400
-DOLAR_MEP = 1410
-DOLAR_CCL = 1420
-
 BASE_ANUAL = 360                 # fijo (para TNA/TIR base 360)
 PRECIO_CI_SOBRE_RESIDUAL = False
 
@@ -29,6 +25,13 @@ PRECIO_CI_SOBRE_RESIDUAL = False
 BASE_DIR = Path(__file__).resolve().parent          # .../src
 REPO_ROOT = BASE_DIR.parent                         # .../ (raíz del repo)
 DATA_DIR = REPO_ROOT / "data"
+
+MACRO_JSON_PATH = str(DATA_DIR / "macro.json")
+
+# Fallback (si falta el macro.json)
+DOLAR_OFICIAL: float = 1400.0
+DOLAR_MEP: float = 1410.0
+DOLAR_CCL: float = 1420.0
 
 # Letras (LECAP/BONCAP)
 MASTER_CSV_PATH = str(DATA_DIR / "instrumentos_master.csv")

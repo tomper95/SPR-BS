@@ -14,13 +14,27 @@ from src.config import (
     BONOS_FLUJOS_PATH,
     USE_SYSTEM_DATE,
     PRECIOS_CI_JSON_PATH,
+    MACRO_JSON_PATH,
     DOLAR_OFICIAL,
     DOLAR_MEP,
     DOLAR_CCL
 )
+
 from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
 from src.checklist import run_checklist
+
+@st.cache_data(ttl=60)
+def load_macro(macro_path: str) -> dict:
+    p = Path(macro_path)
+    if not p.exists():
+        return {}
+
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 # =========================
 # Config UI
@@ -36,9 +50,22 @@ st.caption(
 )
 
 c1, c2, c3 = st.columns(3)
-c1.metric("💵 Dólar oficial", f"{DOLAR_OFICIAL:,.2f}")
-c2.metric("💵 Dólar MEP", f"{DOLAR_MEP:,.2f}")
-c3.metric("💵 Dólar CCL", f"{DOLAR_CCL:,.2f}")
+macro = load_macro(MACRO_JSON_PATH)
+
+oficial = float(macro.get("dolar_oficial", DOLAR_OFICIAL) or DOLAR_OFICIAL)
+mep = float(macro.get("dolar_mep", DOLAR_MEP) or DOLAR_MEP)
+ccl = float(macro.get("dolar_ccl", DOLAR_CCL) or DOLAR_CCL)
+
+as_of = str(macro.get("as_of", "")).strip()
+source = str(macro.get("source", "")).strip()
+
+c1, c2, c3 = st.columns(3)
+c1.metric("💵 Dólar oficial", f"{oficial:,.2f}")
+c2.metric("💵 Dólar MEP", f"{mep:,.2f}")
+c3.metric("💵 Dólar CCL", f"{ccl:,.2f}")
+
+if as_of or source:
+    st.caption(" | ".join([s for s in [f"Actualizado: {as_of}" if as_of else "", f"Fuente: {source}" if source else ""] if s]))
 
 st.divider()
 
