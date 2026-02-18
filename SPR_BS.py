@@ -17,6 +17,7 @@ from src.config import (
 )
 from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
+from src.checklist import run_checklist
 
 # =========================
 # Config UI
@@ -72,6 +73,37 @@ except Exception as e:
     PRECIOS_CI = {}
 
 st.sidebar.caption(f"Precios CI cargados desde JSON: {len(PRECIOS_CI)}")
+
+with st.expander("✅ Checklist de Integridad (datos)", expanded=False):
+    errs, warns, summary, _artifacts = run_checklist(
+        BONOS_MASTER_PATH,
+        BONOS_FLUJOS_PATH,
+        PRECIOS_CI,
+        FECHA_CIERRE,
+    )
+
+    if summary is not None:
+        st.caption(
+            f"Master: {summary.codigos_master} | "
+            f"Precios válidos: {summary.precios_validos} | "
+            f"Códigos con flujos futuros: {summary.codigos_con_flujos_futuros} | "
+            f"Usables por motor: {summary.codigos_usables_motor} | "
+            f"Equivalencias: {summary.equivalencias_items}"
+        )
+
+    if errs:
+        st.error("Errores críticos:")
+        for e in errs:
+            st.write(f"- {e}")
+    else:
+        st.success("Sin errores críticos.")
+
+    if warns:
+        st.warning("Warnings:")
+        for w in warns:
+            st.write(f"- {w}")
+    else:
+        st.info("Sin warnings relevantes.")
 
 # =========================
 # Input monto (opcional)
