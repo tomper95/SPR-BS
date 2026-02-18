@@ -29,10 +29,13 @@ def plot_curve(
     x = np.array(df[x_col], dtype=float)
     y = np.array(df[y_col], dtype=float)
 
-    # Convertir a años si corresponde (solo para el eje)
+    # Convertir unidades (solo para el eje)
     if x_unit == "years":
         x_plot = x / 365.0
         x_label = "Años al Vencimiento"
+    elif x_unit == "months":
+        x_plot = x / 30.4375  # meses promedio (365.25/12)
+        x_label = "Meses al Vencimiento"
     else:
         x_plot = x
         x_label = "Días al Vencimiento"
@@ -98,6 +101,14 @@ def plot_curve(
     if x_unit == "years":
         ax.xaxis.set_major_locator(MultipleLocator(1))
         ax.xaxis.set_minor_locator(MultipleLocator(0.5))
+    elif x_unit == "months":
+        # ticks "humanos" para corto plazo
+        # si el rango llega hasta 12 meses: cada 1 mes; si no: cada 3 meses
+        max_m = float(np.nanmax(x_ok)) if len(x_ok) else 0.0
+        major = 1 if max_m <= 12 else 3
+        minor = 0.5 if major == 1 else 1
+        ax.xaxis.set_major_locator(MultipleLocator(major))
+        ax.xaxis.set_minor_locator(MultipleLocator(minor))
 
     fig.tight_layout()
     return fig

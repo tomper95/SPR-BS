@@ -74,56 +74,6 @@ except Exception as e:
 
 st.sidebar.caption(f"Precios CI cargados desde JSON: {len(PRECIOS_CI)}")
 
-with st.expander("✅ Checklist de Integridad (datos)", expanded=False):
-    errs, warns, summary, _artifacts = run_checklist(
-        BONOS_MASTER_PATH,
-        BONOS_FLUJOS_PATH,
-        PRECIOS_CI,
-        FECHA_CIERRE,
-    )
-
-    if summary is not None:
-        st.caption(
-            f"Master: {summary.codigos_master} | "
-            f"Precios válidos: {summary.precios_validos} | "
-            f"Códigos con flujos futuros: {summary.codigos_con_flujos_futuros} | "
-            f"Usables por motor: {summary.codigos_usables_motor} | "
-            f"Equivalencias: {summary.equivalencias_items}"
-        )
-
-    if errs:
-        st.error("Errores críticos:")
-        for e in errs:
-            st.write(f"- {e}")
-    else:
-        st.success("Sin errores críticos.")
-
-    if warns:
-        st.warning("Warnings:")
-        for w in warns:
-            st.write(f"- {w}")
-    else:
-        st.info("Sin warnings relevantes.")
-
-# =========================
-# Input monto (opcional)
-# =========================
-monto_input = st.sidebar.text_input(
-    "Monto inicial a invertir",
-    value="",
-    help="Monto a invertir hoy al Valor Actual del bono (aprox). Solo números.",
-)
-
-monto_inicial: int | None = None
-if monto_input.strip() != "":
-    if monto_input.isdigit():
-        monto_inicial = int(monto_input)
-        if monto_inicial <= 0:
-            monto_inicial = None
-            st.sidebar.error("El monto debe ser mayor a 0")
-    else:
-        st.sidebar.error("El monto debe ser un número entero positivo")
-
 # =========================
 # Ejecutar motor BONOS
 # =========================
@@ -173,12 +123,35 @@ if not df_curve.empty:
     # Importante: si por filtros no queda nada, NO mostramos el universo (evita puntos raros)
 
 # =========================
-# Tabs (orden visual)
+# Tabs principales (Producto comercial)
 # =========================
-tab_resumen, tab_flujo = st.tabs(["📋 Resumen", "💵 Flujo del bono"])
+tab_mercado, tab_sim, tab_bono, tab_datos = st.tabs(
+    ["📊 Mercado", "🧮 Simulación", "💵 Bono & Flujos", "⚙️ Datos"]
+)
 
-with tab_resumen:
-    # Tabla principal
+# ---------------------------------
+# TAB 1 — MERCADO: curva + tabla
+# ---------------------------------
+with tab_mercado:
+    st.subheader("Mercado")
+
+    # Curva arriba (visual principal)
+    mostrar_labels = st.checkbox("Mostrar nombres en la curva", value=True)
+    if df_curve is None or df_curve.empty:
+        st.info("No hay datos para graficar con los filtros actuales.")
+    else:
+        x_mode = "years"
+        if df_curve is not None and not df_curve.empty and "Dias al VTO" in df_curve.columns:
+            max_days = float(pd.to_numeric(df_curve["Dias al VTO"], errors="coerce").dropna().max() or 0)
+            max_years = max_days / 365.0
+            if max_years <= 2.0:
+                x_mode = "months"
+        fig = plot_curve(df_curve, annotate=mostrar_labels, x_unit=x_mode)  # x_mode = "months" o "years"
+        st.pyplot(fig, use_container_width=True)
+
+    st.divider()
+
+    # Tabla (soporte)
     cols_mostrar = [
         "Especie",
         "Moneda de Cobro",
@@ -189,80 +162,98 @@ with tab_resumen:
         "TNA %",
     ]
     cols_mostrar_existentes = [c for c in cols_mostrar if c in df_view.columns]
-
-    # Tabla (formato)
     df_tab = df_view[cols_mostrar_existentes] if cols_mostrar_existentes else df_view
 
+    # Renombres comerciales (solo display)
+    rename_map = {
+        "Especie": "Bono",
+        "Moneda de Cobro": "Moneda de cobro",
+        "Valor Actual": "Precio hoy (VN100)",
+        "Fecha de Vencimiento": "Vencimiento",
+        "Tiempo al Vencimiento": "Tiempo restante",
+        "TNA %": "Rendimiento anual estimado",
+    }
+    df_display = df_tab.rename(columns=rename_map).copy()
+
+    # Formatos
     fmt = {}
-    if "Valor Actual" in df_tab.columns:
-        fmt["Valor Actual"] = "{:,.2f}"
-    if "TNA %" in df_tab.columns:
-        fmt["TNA %"] = "{:.2f}%"
+    if "Precio hoy (VN100)" in df_display.columns:
+        fmt["Precio hoy (VN100)"] = "{:,.2f}"
+    if "Rendimiento anual estimado" in df_display.columns:
+        fmt["Rendimiento anual estimado"] = "{:.2f}%"
 
     st.dataframe(
-        df_tab.style.format(fmt),
+        df_display.style.format(fmt),
         use_container_width=True,
         hide_index=True,
-        height=420,
+        height=460,
     )
 
-    # Monto total estimado (opcional) -> expander para no ensuciar
-    if monto_inicial is not None and monto_inicial > 0:
-        with st.expander("Ver monto total estimado a cobrar por bono"):
-            required_cols = ["Especie", "Fecha de Vencimiento", "Valor Actual", "_total_flujo_por_vn100"]
-            missing = [c for c in required_cols if c not in df_view.columns]
+# ---------------------------------
+# TAB 2 — SIMULACIÓN: monto -> cuánto cobro
+# ---------------------------------
+with tab_sim:
+    st.subheader("Simulación")
 
-            if missing:
-                st.error(f"Faltan columnas internas para calcular el monto: {missing}")
-            else:
-                df_monto = df_view[required_cols].copy()
+    st.caption("Ingresá un monto aproximado para estimar cuánto podrías cobrar al vencimiento.")
+    monto_input = st.text_input(
+        "Monto a invertir hoy",
+        value="",
+        help="Solo números. Se usa el 'Precio hoy (VN100)' como aproximación.",
+    )
 
-                df_monto["Valor Actual"] = pd.to_numeric(df_monto["Valor Actual"], errors="coerce")
-                df_monto["_total_flujo_por_vn100"] = pd.to_numeric(df_monto["_total_flujo_por_vn100"], errors="coerce")
+    monto_inicial: int | None = None
+    if monto_input.strip() != "":
+        if monto_input.isdigit():
+            monto_inicial = int(monto_input)
+            if monto_inicial <= 0:
+                monto_inicial = None
+                st.error("El monto debe ser mayor a 0.")
+        else:
+            st.error("El monto debe ser un número entero positivo.")
 
-                df_monto = df_monto.dropna(subset=["Valor Actual", "_total_flujo_por_vn100"])
-                df_monto = df_monto[df_monto["Valor Actual"] > 0]
-
-                if df_monto.empty:
-                    st.warning("No hay datos suficientes para estimar el monto a cobrar (precio o flujos inválidos).")
-                else:
-                    df_monto["VN100_equivalentes"] = monto_inicial / df_monto["Valor Actual"]
-                    df_monto["Nominales"] = np.floor(df_monto["VN100_equivalentes"] * 100).astype(int)
-                    df_monto["VN100_equivalentes"] = df_monto["Nominales"] / 100.0
-                    df_monto["Monto a Cobrar (moneda flujo)"] = df_monto["VN100_equivalentes"] * df_monto["_total_flujo_por_vn100"]
-
-                    df_monto = df_monto[["Especie", "Fecha de Vencimiento", "Nominales", "Monto a Cobrar (moneda flujo)"]].sort_values(
-                        "Fecha de Vencimiento"
-                    )
-
-                    st.dataframe(
-                        df_monto.style.format({
-                            "Nominales": "{:,.0f}",
-                            "Monto a Cobrar (moneda flujo)": "{:,.2f}",
-                        }),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=280,
-                    )
-
-    st.divider()
-
-    if not df_curve.empty and "Dias al VTO" in df_curve.columns and "TNA %" in df_curve.columns:
-        fig = plot_curve(
-            df_curve,
-            x_col="Dias al VTO",
-            y_col="TNA %",
-            title=f"Curva de Bonos ({moneda_sel}) – TNA % vs Años",
-            x_unit="years",
-            annotate=True,
-            max_labels=40,
-        )
-        st.pyplot(fig, use_container_width=True)
+    if monto_inicial is None:
+        st.info("Cargá un monto para ver la estimación.")
     else:
-        st.info("Curva no disponible: faltan datos o columnas para graficar (se completa al cargar más bonos).")
+        required_cols = ["Especie", "Fecha de Vencimiento", "Valor Actual", "_total_flujo_por_vn100"]
+        missing = [c for c in required_cols if c not in df_view.columns]
 
-with tab_flujo:
-    st.subheader("Flujo de pagos del bono")
+        if missing:
+            st.error(f"Faltan columnas internas para calcular el monto: {missing}")
+        else:
+            df_monto = df_view[required_cols].copy()
+            df_monto["Valor Actual"] = pd.to_numeric(df_monto["Valor Actual"], errors="coerce")
+            df_monto["_total_flujo_por_vn100"] = pd.to_numeric(df_monto["_total_flujo_por_vn100"], errors="coerce")
+            df_monto = df_monto.dropna(subset=["Valor Actual", "_total_flujo_por_vn100"])
+            df_monto = df_monto[df_monto["Valor Actual"] > 0]
+
+            if df_monto.empty:
+                st.warning("No hay datos suficientes para estimar (precio o flujos inválidos).")
+            else:
+                df_monto["VN100_equivalentes"] = monto_inicial / df_monto["Valor Actual"]
+                df_monto["Nominales"] = np.floor(df_monto["VN100_equivalentes"] * 100).astype(int)
+                df_monto["VN100_equivalentes"] = df_monto["Nominales"] / 100.0
+                df_monto["Monto a Cobrar (moneda de cobro)"] = df_monto["VN100_equivalentes"] * df_monto["_total_flujo_por_vn100"]
+
+                out = df_monto[["Especie", "Fecha de Vencimiento", "Nominales", "Monto a Cobrar (moneda de cobro)"]].copy()
+                out = out.rename(columns={"Especie": "Bono", "Fecha de Vencimiento": "Vencimiento"})
+                out = out.sort_values("Vencimiento")
+
+                st.dataframe(
+                    out.style.format({
+                        "Nominales": "{:,.0f}",
+                        "Monto a Cobrar (moneda de cobro)": "{:,.2f}",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=420,
+                )
+
+# ---------------------------------
+# TAB 3 — BONO & FLUJOS: detalle + flujos (y opcional estimación por monto)
+# ---------------------------------
+with tab_bono:
+    st.subheader("Bono & Flujos")
 
     if df_view.empty or "Especie" not in df_view.columns:
         st.info("No hay bonos para mostrar detalle con los filtros actuales.")
@@ -290,47 +281,60 @@ with tab_flujo:
             total_vn100 = float(pd.to_numeric(det["flujo_total_por_vn100"], errors="coerce").fillna(0).sum())
 
             c1, c2 = st.columns(2)
-            c1.metric("Moneda", moneda)
+            c1.metric("Moneda de cobro", moneda)
             c2.metric("Total futuro por VN100", f"{total_vn100:,.4f}")
 
             st.dataframe(
-                det_view.style.format({
-                    "interes_por_vn100": "{:,.4f}",
-                    "amortizacion_por_vn100": "{:,.4f}",
-                    "flujo_total_por_vn100": "{:,.4f}",
+                det_view.rename(columns={
+                    "fecha_pago": "Fecha",
+                    "interes_por_vn100": "Interés (VN100)",
+                    "amortizacion_por_vn100": "Amortización (VN100)",
+                    "flujo_total_por_vn100": "Total (VN100)",
+                    "moneda_flujo": "Moneda",
+                }).style.format({
+                    "Interés (VN100)": "{:,.4f}",
+                    "Amortización (VN100)": "{:,.4f}",
+                    "Total (VN100)": "{:,.4f}",
                 }),
                 use_container_width=True,
                 hide_index=True,
                 height=420,
             )
 
-            # Flujo estimado para monto -> expander
-            if monto_inicial is not None and monto_inicial > 0:
-                with st.expander("Ver flujo estimado para mi monto"):
-                    fila = df_view[df_view["Especie"].astype(str).str.upper() == especie_sel].copy()
-                    if not fila.empty and "Valor Actual" in fila.columns:
-                        precio = pd.to_numeric(fila["Valor Actual"].iloc[0], errors="coerce")
-                        if pd.notna(precio) and float(precio) > 0:
-                            vn100_equiv = monto_inicial / float(precio)
-                            nominales = int(np.floor(vn100_equiv * 100))  # VN enteros
-                            vn100_equiv = nominales / 100.0
+            st.caption("Tip: la simulación por monto se hace en la pestaña 🧮 Simulación.")
 
-                            det_est = det.copy()
-                            det_est["Interés (monto)"] = vn100_equiv * pd.to_numeric(det_est["interes_por_vn100"], errors="coerce").fillna(0)
-                            det_est["Amortización (monto)"] = vn100_equiv * pd.to_numeric(det_est["amortizacion_por_vn100"], errors="coerce").fillna(0)
-                            det_est["Total (monto)"] = vn100_equiv * pd.to_numeric(det_est["flujo_total_por_vn100"], errors="coerce").fillna(0)
-                            det_est["fecha_pago"] = pd.to_datetime(det_est["fecha_pago"], errors="coerce").dt.date
+# ---------------------------------
+# TAB 4 — DATOS: checklist / integridad
+# ---------------------------------
+with tab_datos:
+    st.subheader("Datos & Calidad")
 
-                            st.caption(f"Nominales estimados: {nominales:,} | Moneda: {moneda}")
+    errs, warns, summary, _artifacts = run_checklist(
+        BONOS_MASTER_PATH,
+        BONOS_FLUJOS_PATH,
+        PRECIOS_CI,
+        FECHA_CIERRE,
+    )
 
-                            st.dataframe(
-                                det_est[["fecha_pago", "Interés (monto)", "Amortización (monto)", "Total (monto)"]]
-                                .style.format({
-                                    "Interés (monto)": "{:,.2f}",
-                                    "Amortización (monto)": "{:,.2f}",
-                                    "Total (monto)": "{:,.2f}",
-                                }),
-                                use_container_width=True,
-                                hide_index=True,
-                                height=420,
-                            )
+    if summary is not None:
+        st.caption(
+            f"Master: {summary.codigos_master} | "
+            f"Precios válidos: {summary.precios_validos} | "
+            f"Códigos con flujos futuros: {summary.codigos_con_flujos_futuros} | "
+            f"Usables por motor: {summary.codigos_usables_motor} | "
+            f"Equivalencias: {summary.equivalencias_items}"
+        )
+
+    if errs:
+        st.error("Errores críticos:")
+        for e in errs:
+            st.write(f"- {e}")
+    else:
+        st.success("Sin errores críticos.")
+
+    if warns:
+        st.warning("Warnings:")
+        for w in warns:
+            st.write(f"- {w}")
+    else:
+        st.info("Sin warnings relevantes.")
