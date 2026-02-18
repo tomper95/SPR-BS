@@ -242,6 +242,23 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
 
     out = pd.DataFrame(rows)
     out = out.sort_values(["Dias_al_vto","codigo"], na_position="last").reset_index(drop=True)
-    
+
+    # -----------------------------------
+    # FICHA BONO: arrastrar metadata
+    # -----------------------------------
+    ficha_cols = [
+    "codigo",
+    "emisor", "sector", "legislacion", "rating", "tipo_tasa",
+    "cupon_anual", "frecuencia", "fecha_emision", "fecha_vto",
+    "garantia", "nota",
+    ]
+    ficha_cols = [c for c in ficha_cols if c in master.columns]
+
+    if "codigo" in ficha_cols and not master.empty:
+        ficha = master[ficha_cols].drop_duplicates(subset=["codigo"]).copy()
+        out = out.merge(ficha, on="codigo", how="left")
+
+    # Ahora sí construir vistas
     df_view, df_curve = build_view_df_bonos(out)
+
     return df_view, df_curve, flujos_fut

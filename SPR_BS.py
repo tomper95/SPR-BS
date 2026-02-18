@@ -49,7 +49,6 @@ st.caption(
     f"Base anual: {BASE_ANUAL}"
 )
 
-c1, c2, c3 = st.columns(3)
 macro = load_macro(MACRO_JSON_PATH)
 
 oficial = float(macro.get("dolar_oficial", DOLAR_OFICIAL) or DOLAR_OFICIAL)
@@ -317,6 +316,50 @@ with tab_bono:
     else:
         especies = df_view["Especie"].astype(str).str.upper().tolist()
         especie_sel = st.selectbox("Elegí un bono:", options=especies)
+        # -------------------------
+        # FICHA DEL BONO (FASE 5.3)
+        # -------------------------
+        row = df_view[df_view["Especie"].astype(str).str.upper() == str(especie_sel).upper()]
+        row = row.iloc[0] if not row.empty else None
+
+        def _get(field: str) -> str:
+            if row is None:
+                return "—"
+            val = row.get(field, None)
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                return "—"
+            s = str(val).strip()
+            return s if s else "—"
+
+        st.markdown("### 🧾 Ficha del bono")
+
+        a, b, c, d = st.columns(4)
+        a.metric("Emisor", _get("emisor"))
+        b.metric("Sector", _get("sector"))
+        c.metric("Legislación", _get("legislacion"))
+        d.metric("Rating", _get("rating"))
+
+        e, f, g, h = st.columns(4)
+        e.metric("Tipo de tasa", _get("tipo_tasa"))
+        f.metric("Moneda de cobro", _get("Moneda de Cobro"))  # ya existe en df_view
+        # en vez de h para cupón, hacé 2 campos
+        g.metric("Vencimiento", _get("Fecha de Vencimiento"))
+        h.metric("Frecuencia", _get("frecuencia"))
+
+        i, j, k, l = st.columns(4)
+        cupon_raw = row.get("cupon_anual", None) if row is not None else None
+        try:
+            cupon_pct = float(str(cupon_raw).replace(",", ".")) * 100.0
+            cupon_txt = f"{cupon_pct:.2f}%"
+        except Exception:
+            cupon_txt = "—"
+        i.metric("Cupón anual", cupon_txt)
+
+        nota = _get("nota")
+        if nota != "—":
+            st.caption(nota)
+
+        st.divider()
 
         det = flujos_fut[flujos_fut["codigo"].astype(str).str.upper() == especie_sel].copy()
         det = det.sort_values("fecha_pago")
