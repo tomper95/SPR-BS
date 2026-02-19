@@ -228,6 +228,7 @@ with tab_mercado:
         "Tiempo al Vencimiento",
         "TNA %",
         "Riesgo",
+        "Alerta",
     ]
     cols_mostrar_existentes = [c for c in cols_mostrar if c in df_view.columns]
     df_tab = df_view[cols_mostrar_existentes] if cols_mostrar_existentes else df_view
@@ -240,8 +241,18 @@ with tab_mercado:
         "Fecha de Vencimiento": "Vencimiento",
         "Tiempo al Vencimiento": "Tiempo restante",
         "TNA %": "Rendimiento anual estimado",
+        "Alerta": "Alerta",
     }
     df_display = df_tab.rename(columns=rename_map).copy()
+
+    # Orden automático: alertas al final (si la columna existe)
+    if "_perdida_implicita" in df_display.columns:
+        # Traemos la flag desde df_view original por Bono
+        flag_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
+        df_display = df_display.drop(columns=["_perdida_implicita"])
+
+        # Alertas al final
+        df_display = df_display.sort_values(by="_perdida_implicita", ascending=True)
 
     # Formatos
     fmt = {}
@@ -250,8 +261,25 @@ with tab_mercado:
     if "Rendimiento anual estimado" in df_display.columns:
         fmt["Rendimiento anual estimado"] = "{:.2f}%"
 
+    # =========================
+    # ALERTAS: ordenar + pintar
+    # =========================
+    if "_perdida_implicita" in df_display.columns:
+        df_display = df_display.sort_values(by="_perdida_implicita", ascending=True)
+
+    def style_alertas(row):
+        if row.get("_perdida_implicita", False):
+            return ["background-color: #3b0a0a; color: #ffd6d6"] * len(row)
+        return [""] * len(row)
+
+    styled = df_display.style.format(fmt).apply(style_alertas, axis=1)
+
+    # Eliminamos la columna interna antes de mostrar
+    if "_perdida_implicita" in df_display.columns:
+        df_display = df_display.drop(columns=["_perdida_implicita"])
+
     st.dataframe(
-        df_display.style.format(fmt),
+        styled,
         use_container_width=True,
         hide_index=True,
         height=460,
@@ -321,6 +349,12 @@ with tab_sim:
                     height=420,
                 )
 
+                if "_perdida_implicita" in df_view.columns:
+                    flag_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
+                    out["Alerta"] = out["Bono"].map(flag_map).fillna(False).map(lambda x: "⚠ Pérdida implícita" if x else "")
+                if "Alerta" in out.columns and (out["Alerta"] != "").any():
+                    st.warning("⚠ Hay bonos que devuelven menos de lo que cuestan hoy (pérdida implícita). Miralos con cuidado.")
+
 # ---------------------------------
 # TAB 3 — BONO & FLUJOS: detalle + flujos (y opcional estimación por monto)
 # ---------------------------------
@@ -340,6 +374,11 @@ with tab_bono:
         # -------------------------
         row = df_view[df_view["Especie"].astype(str).str.upper() == str(especie_sel).upper()]
         row = row.iloc[0] if not row.empty else None
+
+        if row is not None:
+            perdida = bool(row.get("_perdida_implicita", False))
+            if perdida:
+                st.error("⚠ Pérdida implícita: el total a cobrar (VN100) es menor que el precio hoy (VN100).")
 
         def _get(field: str) -> str:
             if row is None:

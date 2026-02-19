@@ -19,6 +19,8 @@ BONOS_COLUMN_MAP = {
     "_risk_score": "_risk_score",   # interno
     "Riesgo": "Riesgo",             # display
     "Dur_Mod": "_Dur_Mod",          # interno (opcional)
+    "_perdida_implicita": "_perdida_implicita",  # interno
+    "Alerta": "Alerta",                          # display
 }
 
 BONOS_ORDER_COLS = [
@@ -35,6 +37,8 @@ BONOS_ORDER_COLS = [
     "_risk_score",
     "Riesgo",
     "Dur_Mod",
+    "_perdida_implicita",
+    "Alerta",
 ]
 
 
@@ -94,6 +98,22 @@ def build_view_df_bonos(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
+    # -----------------------------
+    # ALERTA: Pérdida implícita
+    # -----------------------------
+    # Regla: si el total a cobrar (VN100) es menor que el precio hoy (VN100)
+    ok = (
+        df["precio_ci"].notna()
+        & df["total_flujo_por_vn100"].notna()
+        & (df["precio_ci"] > 0)
+    )
+
+    df["_perdida_implicita"] = False
+    df.loc[ok, "_perdida_implicita"] = df.loc[ok, "total_flujo_por_vn100"] < df.loc[ok, "precio_ci"]
+
+    df["Alerta"] = ""
+    df.loc[df["_perdida_implicita"], "Alerta"] = "⚠ Pérdida implícita"
+
     for c in ["Dur_Mac", "Dur_Mod", "_risk_score"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -109,6 +129,8 @@ def build_view_df_bonos(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         return "ALTO"
 
     df["Riesgo"] = df["_risk_score"].apply(_bucket_riesgo)
+    # Ajuste UX: si hay pérdida implícita, el "riesgo de decisión" no puede ser BAJO
+    df.loc[df["_perdida_implicita"] & (df["Riesgo"] == "BAJO"), "Riesgo"] = "MEDIO"
 
     # Tiempo al vencimiento + plazo
     df["Tiempo_al_vto"] = df["Dias_al_vto"].apply(_fmt_tiempo_desde_dias)
