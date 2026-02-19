@@ -66,7 +66,7 @@ def fetch_dolares_realtime() -> dict:
 # Config UI
 # =========================
 st.set_page_config(layout="wide")
-st.title("SPR – Sistema de Precios Real")
+st.title("SPideR – Sistema de Precios Real")
 
 try:
     dolares = fetch_dolares_realtime()
