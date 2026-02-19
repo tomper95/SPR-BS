@@ -84,8 +84,8 @@ if tipo_sel in ["LECAP", "BONCAP"]:
     st.sidebar.caption("Moneda: ARS (fija para LECAP/BONCAP)")
 else:
     moneda_sel = st.sidebar.radio(
-        "Mostrar bonos en:",
-        options=["USD", "ARS"],
+        "Moneda de cobro:",
+        options=["TODAS", "USD", "ARS"],
         index=0,
     )
 
@@ -129,7 +129,7 @@ df_view, df_curve, flujos_fut = run_engine_bonos(
 if df_view is None or df_view.empty:
     df_view = pd.DataFrame()
 
-if "Moneda de Cobro" in df_view.columns:
+if moneda_sel != "TODAS" and "Moneda de Cobro" in df_view.columns:
     df_view = df_view[df_view["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
 
 if "Tipo" in df_view.columns:
@@ -146,7 +146,7 @@ if df_curve is None:
 
 if not df_curve.empty:
     # Moneda
-    if "Moneda de Cobro" in df_curve.columns:
+    if moneda_sel != "TODAS" and "Moneda de Cobro" in df_curve.columns:
         df_curve = df_curve[df_curve["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
 
     # Tipo
@@ -209,6 +209,7 @@ with tab_mercado:
         "Fecha de Vencimiento",
         "Tiempo al Vencimiento",
         "TNA %",
+        "Riesgo",
     ]
     cols_mostrar_existentes = [c for c in cols_mostrar if c in df_view.columns]
     df_tab = df_view[cols_mostrar_existentes] if cols_mostrar_existentes else df_view

@@ -106,6 +106,125 @@ def xirr_base360(dates: list[pd.Timestamp], amounts: list[float], guess: float =
 
     return mid
 
+def macaulay_duration_base360(
+    dates: list[pd.Timestamp],
+    amounts: list[float],
+    rate: float,
+    price: float,
+) -> float:
+    """
+    Duration de Macaulay (en años base 360), usando:
+      PV_i = CF_i / (1+rate)^(t_i/BASE_ANUAL)
+      D = sum(t_i_years * PV_i) / price
+    dates[0] debe ser FECHA_CIERRE (t=0) y su amount suele ser -price (no se incluye en duration).
+    """
+    if not np.isfinite(rate) or rate <= -0.9999:
+        return np.nan
+    if not np.isfinite(price) or price <= 0:
+        return np.nan
+    if len(dates) != len(amounts) or len(dates) < 2:
+        return np.nan
+
+    fc = pd.to_datetime(FECHA_CIERRE)
+
+    # solo flujos positivos futuros (ignoramos el -price de t=0)
+    pv_sum = 0.0
+    w_sum = 0.0
+
+    for d, cf in zip(dates[1:], amounts[1:]):
+        if cf is None:
+            continue
+        cf = float(cf)
+        if not np.isfinite(cf) or cf <= 0:
+            continue
+
+        t_days = float((pd.to_datetime(d) - fc).days)
+        if t_days <= 0:
+            continue
+
+        t_years = t_days / BASE_ANUAL
+        disc = (1.0 + rate) ** (t_days / BASE_ANUAL)
+        pv = cf / disc
+
+        pv_sum += pv
+        w_sum += t_years * pv
+
+    if pv_sum <= 0:
+        return np.nan
+
+    # Usamos el precio de mercado como denominador (duration “de precio”)
+    return w_sum / float(price)
+
+
+def risk_score_balanced(mod_duration: float, tipo: str, moneda_cobro: str) -> float:
+    """
+    Score 0..1 (mayor = más riesgoso), balanceado:
+    - 55% sensibilidad (mod duration)
+    - 30% tipo instrumento
+    - 15% moneda de cobro
+    """
+    # 1) Sensibilidad: normalizamos mod duration con umbrales simples (no especulativos)
+    #    0..2 años => 0..0.35 | 2..6 => 0.35..0.75 | >6 => 0.75..1
+    if not np.isfinite(mod_duration) or mod_duration < 0:
+        sens = 0.50  # neutral si no se pudo calcular
+    else:
+        d = float(mod_duration)
+        if d <= 2:
+            sens = 0.35 * (d / 2.0)
+        elif d <= 6:
+            sens = 0.35 + (0.75 - 0.35) * ((d - 2.0) / 4.0)
+        else:
+            # asintótico hacia 1
+            sens = 0.75 + 0.25 * (1.0 - np.exp(-(d - 6.0) / 6.0))
+        sens = float(np.clip(sens, 0.0, 1.0))
+
+    # 2) Tipo: estructura
+    t = (tipo or "").strip().upper()
+    if t in ["LECAP", "BONCAP"]:
+        tipo_s = 0.25
+    elif t == "SOBERANO":
+        tipo_s = 0.60
+    elif t == "ON":
+        tipo_s = 0.75
+    else:
+        tipo_s = 0.60
+
+    # 3) Moneda de cobro: ARS penaliza
+    m = (moneda_cobro or "").strip().upper()
+    if m == "ARS":
+        mon_s = 0.80
+    elif m == "USD":
+        mon_s = 0.35
+    else:
+        mon_s = 0.55
+
+    score = 0.55 * sens + 0.30 * tipo_s + 0.15 * mon_s
+    return float(np.clip(score, 0.0, 1.0))
+
+def _resolve_price_code(codigo: str, tipo: str, precios_ci: dict) -> str | None:
+    """
+    Devuelve el código a usar para buscar precio en precios_ci.
+    Regla actual:
+      - default: usa el mismo codigo
+      - ON: si termina en 'D' y existe la variante 'O' en el JSON, usa la 'O'
+    """
+    c = str(codigo).strip().upper()
+    t = str(tipo or "").strip().upper()
+
+    if c in precios_ci:
+        return c
+
+    if t == "ON" and c.endswith("D"):
+        alt = c[:-1] + "O"
+        if alt in precios_ci:
+            return alt
+
+    return None
+
+
+def _has_price(codigo: str, tipo: str, precios_ci: dict) -> bool:
+    return _resolve_price_code(codigo, tipo, precios_ci) is not None
+
 def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Bonos soberanos:
@@ -132,15 +251,31 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
     # flujos futuros
     flujos_fut = flujos[flujos["fecha_pago"] >= fc].copy()
     codigos_con_flujos = set(flujos_fut["codigo"].dropna().astype(str).str.upper())
-    codigos_con_precio = set(
-        k.strip().upper()
-        for k, v in precios_ci.items()
-        if v is not None and str(v).strip() != "" and pd.to_numeric(v, errors="coerce") is not None
-        and np.isfinite(pd.to_numeric(v, errors="coerce"))
-        and float(pd.to_numeric(v, errors="coerce")) > 0
-    )
 
-    codigos_validos = codigos_con_flujos.intersection(codigos_con_precio)
+    # Precios válidos (normalizados)
+    precios_ok = {}
+    for k, v in (precios_ci or {}).items():
+        kk = str(k).strip().upper()
+        vv = pd.to_numeric(v, errors="coerce")
+        if vv is not None and np.isfinite(vv) and float(vv) > 0:
+            precios_ok[kk] = float(vv)
+
+    # Tipos por código (desde master)
+    master["codigo"] = master["codigo"].astype(str).str.strip().str.upper()
+    master["tipo_instrumento"] = master.get("tipo_instrumento", "SOBERANO")
+    master["tipo_instrumento"] = master["tipo_instrumento"].astype(str).str.strip().str.upper()
+
+    tipo_by_code = dict(zip(master["codigo"], master["tipo_instrumento"]))
+
+    # Códigos del master que tienen precio (directo o alias ON D->O) + flujos futuros
+    codigos_con_precio_master = {
+        code for code, t in tipo_by_code.items()
+        if _has_price(code, t, precios_ok)
+    }
+
+    codigos_validos = codigos_con_flujos.intersection(codigos_con_precio_master)
+
+    master = master[master["codigo"].isin(codigos_validos)].copy()
 
     # Aplicar filtro al master
     master = master[master["codigo"].astype(str).str.upper().isin(codigos_validos)].copy()
@@ -176,7 +311,8 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
 
         ratio_residual = valor_residual / 100.0
 
-        precio_ci_raw = precios_ci.get(codigo)
+        price_code = _resolve_price_code(codigo, tipo_instrumento, precios_ok)
+        precio_ci_raw = precios_ok.get(price_code) if price_code else np.nan
         try:
             precio_ci_raw = float(precio_ci_raw)
         except Exception:
@@ -199,6 +335,9 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
                 "tipo_instrumento": tipo_instrumento,
                 "moneda": moneda_flujo,
                 "precio_ci": precio_ci,
+                "Dur_Mac": np.nan,
+                "Dur_Mod": np.nan,
+                "_risk_score": np.nan,
 
                 # Interno para cálculo de monto (si después lo necesitás):
                 "total_flujo_por_vn100": np.nan,
@@ -218,8 +357,14 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
 
         if np.isfinite(tir):
             tna_pct = tir * 100.0
+
+            # Duration (Macaulay y Modified) base 360
+            dur_mac = macaulay_duration_base360(fechas, montos, tir, precio_ci)
+            dur_mod = dur_mac / (1.0 + tir) if np.isfinite(dur_mac) and (1.0 + tir) > 0 else np.nan
         else:
             tna_pct = np.nan
+            dur_mac = np.nan
+            dur_mod = np.nan
 
         total_flujo = float(g["flujo_total_por_vn100"].sum())
         fecha_final = g["fecha_pago"].max()
@@ -230,6 +375,10 @@ def run_engine_bonos(master_xlsx_path: str, flujos_path: str, precios_ci: dict) 
             "tipo_instrumento": tipo_instrumento,
             "moneda": moneda_flujo,
             "precio_ci": precio_ci,
+
+            "Dur_Mac": dur_mac,
+            "Dur_Mod": dur_mod,
+            "_risk_score": risk_score_balanced(dur_mod, tipo_instrumento, moneda_flujo),
 
             # interno para cálculo de monto (si el usuario pone monto a invertir)
             "total_flujo_por_vn100": total_flujo,

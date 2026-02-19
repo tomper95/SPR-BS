@@ -16,6 +16,9 @@ BONOS_COLUMN_MAP = {
     "plazo": "Plazo",
     "TNA_%": "TNA %",
     "total_flujo_por_vn100": "_total_flujo_por_vn100",  # interno para cálculos de monto
+    "_risk_score": "_risk_score",   # interno
+    "Riesgo": "Riesgo",             # display
+    "Dur_Mod": "_Dur_Mod",          # interno (opcional)
 }
 
 BONOS_ORDER_COLS = [
@@ -29,6 +32,9 @@ BONOS_ORDER_COLS = [
     "plazo",
     "TNA_%",
     "total_flujo_por_vn100",
+    "_risk_score",
+    "Riesgo",
+    "Dur_Mod",
 ]
 
 
@@ -87,6 +93,22 @@ def build_view_df_bonos(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     for c in ["precio_ci", "total_flujo_por_vn100", "Dias_al_vto", "TNA_%"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    for c in ["Dur_Mac", "Dur_Mod", "_risk_score"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    def _bucket_riesgo(score: float | None) -> str:
+        if score is None or pd.isna(score):
+            return ""
+        s = float(score)
+        if s < 0.45:
+            return "BAJO"
+        if s < 0.70:
+            return "MEDIO"
+        return "ALTO"
+
+    df["Riesgo"] = df["_risk_score"].apply(_bucket_riesgo)
 
     # Tiempo al vencimiento + plazo
     df["Tiempo_al_vto"] = df["Dias_al_vto"].apply(_fmt_tiempo_desde_dias)
