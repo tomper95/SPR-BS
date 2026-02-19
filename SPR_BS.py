@@ -103,7 +103,7 @@ if tipo_sel in ["LECAP", "BONCAP"]:
 else:
     moneda_sel = st.sidebar.radio(
         "Moneda de cobro:",
-        options=["TODAS", "USD", "ARS"],
+        options=["USD", "ARS"],
         index=0,
     )
 
@@ -147,7 +147,7 @@ df_view, df_curve, flujos_fut = run_engine_bonos(
 if df_view is None or df_view.empty:
     df_view = pd.DataFrame()
 
-if moneda_sel != "TODAS" and "Moneda de Cobro" in df_view.columns:
+if "Moneda de Cobro" in df_view.columns:
     df_view = df_view[df_view["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
 
 if "Tipo" in df_view.columns:
@@ -164,7 +164,7 @@ if df_curve is None:
 
 if not df_curve.empty:
     # Moneda
-    if moneda_sel != "TODAS" and "Moneda de Cobro" in df_curve.columns:
+    if "Moneda de Cobro" in df_curve.columns:
         df_curve = df_curve[df_curve["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
 
     # Tipo
