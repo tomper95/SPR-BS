@@ -185,6 +185,28 @@ def run_checklist(
     if sin_flujo:
         warnings.append(f"Códigos en master sin flujo futuro (muestra 30): {sin_flujo[:30]}")
 
+    # ---------- Alertas específicas: ON ----------
+    if "tipo_instrumento" in master_full.columns:
+        m_on = master_full.copy()
+        m_on["tipo_instrumento"] = m_on["tipo_instrumento"].astype(str).str.strip().str.upper()
+        codigos_on = set(m_on.loc[m_on["tipo_instrumento"] == "ON", "codigo"].dropna())
+    
+        if codigos_on:
+            on_sin_flujo = sorted(list(codigos_on - codigos_flujo_fut))
+            if on_sin_flujo:
+                warnings.append(
+                    f"[ON] En master sin match exacto en flujos futuros (muestra 30): {on_sin_flujo[:30]}"
+                )
+
+                on_sin_precio = sorted(list(codigos_on - codigos_precio))
+                if on_sin_precio:
+                    warnings.append(
+                        f"[ON] En master sin precio exacto en precios_ci.json (muestra 30): {on_sin_precio[:30]}"
+                    )
+        else:
+            # ya existe un warning arriba si falta tipo_instrumento, pero lo dejamos explícito
+            warnings.append("[ON] No puedo validar ON: falta columna 'tipo_instrumento' en master_bono.")
+
     precio_sin_master = sorted(list(codigos_precio - codigos_master))
     if precio_sin_master:
         warnings.append(f"Precios en JSON sin master (muestra 30): {precio_sin_master[:30]}")
