@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import requests
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -12,19 +15,13 @@ from src.config import (
     BASE_ANUAL,
     BONOS_MASTER_PATH,
     BONOS_FLUJOS_PATH,
-    USE_SYSTEM_DATE,
     PRECIOS_CI_JSON_PATH,
-    MACRO_JSON_PATH,
-    DOLAR_OFICIAL,
-    DOLAR_MEP,
-    DOLAR_CCL
 )
 
 from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
 from src.checklist import run_checklist
 
-@st.cache_data(ttl=60)
 def load_macro(macro_path: str) -> dict:
     p = Path(macro_path)
     if not p.exists():
@@ -36,35 +33,56 @@ def load_macro(macro_path: str) -> dict:
     except Exception:
         return {}
 
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_dolares_realtime() -> dict:
+    """
+    DolarAPI: devuelve {"oficial": {"venta": x}, "mep": {"venta": y}, "ccl": {"venta": z}, "ts": "..."}
+    """
+    def get(url: str) -> dict:
+        r = requests.get(url, timeout=8)
+        r.raise_for_status()
+        return r.json()
+
+    ofi = get("https://dolarapi.com/v1/dolares/oficial")
+    mep = get("https://dolarapi.com/v1/dolares/bolsa")
+    ccl = get("https://dolarapi.com/v1/dolares/contadoconliqui")
+
+    def pick(node: dict) -> dict:
+        # DolarAPI trae "venta" y "compra" directo
+        return {
+            "compra": float(node["compra"]) if node.get("compra") is not None else None,
+            "venta": float(node["venta"]) if node.get("venta") is not None else None,
+        }
+
+    return {
+        "oficial": pick(ofi),
+        "mep": pick(mep),
+        "ccl": pick(ccl),
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "source": "dolarapi.com",
+    }
+
 # =========================
 # Config UI
 # =========================
 st.set_page_config(layout="wide")
 st.title("SPR – Sistema de Precios Real")
 
-modo = "Fecha real" if USE_SYSTEM_DATE else "Simulación"
-st.caption(
-    f"📅 Fecha de referencia: {FECHA_CIERRE} | "
-    f"Modo: {modo} | "
-    f"Base anual: {BASE_ANUAL}"
-)
+try:
+    dolares = fetch_dolares_realtime()
+    ofi = dolares["oficial"]
+    mep = dolares["mep"]
+    ccl = dolares["ccl"]
 
-macro = load_macro(MACRO_JSON_PATH)
-
-oficial = float(macro.get("dolar_oficial", DOLAR_OFICIAL) or DOLAR_OFICIAL)
-mep = float(macro.get("dolar_mep", DOLAR_MEP) or DOLAR_MEP)
-ccl = float(macro.get("dolar_ccl", DOLAR_CCL) or DOLAR_CCL)
-
-as_of = str(macro.get("as_of", "")).strip()
-source = str(macro.get("source", "")).strip()
-
-c1, c2, c3 = st.columns(3)
-c1.metric("💵 Dólar oficial", f"{oficial:,.2f}")
-c2.metric("💵 Dólar MEP", f"{mep:,.2f}")
-c3.metric("💵 Dólar CCL", f"{ccl:,.2f}")
-
-if as_of or source:
-    st.caption(" | ".join([s for s in [f"Actualizado: {as_of}" if as_of else "", f"Fuente: {source}" if source else ""] if s]))
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Dólar Oficial (venta)", f"{ofi['venta']:.2f}" if ofi["venta"] else "—")
+    c2.metric("Dólar MEP (venta)",      f"{mep['venta']:.2f}" if mep["venta"] else "—")
+    c3.metric("Dólar CCL (venta)",      f"{ccl['venta']:.2f}" if ccl["venta"] else "—")
+    c4.caption(f"Actualizado: {dolares['ts']} | Fuente: {dolares.get('source','API')} (cache 60s)")
+except Exception as e:
+    # fallback a tu macro.json actual (no rompe nada si falla la API)
+    st.warning("No pude traer cotizaciones en tiempo real. Mostrando valores locales.")
+    # acá dejás tu lógica actual con macro.json
 
 st.divider()
 
