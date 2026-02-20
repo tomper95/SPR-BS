@@ -22,6 +22,7 @@ from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
 from src.checklist import run_checklist
 
+
 def load_macro(macro_path: str) -> dict:
     p = Path(macro_path)
     if not p.exists():
@@ -32,6 +33,7 @@ def load_macro(macro_path: str) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_dolares_realtime() -> dict:
@@ -48,7 +50,6 @@ def fetch_dolares_realtime() -> dict:
     ccl = get("https://dolarapi.com/v1/dolares/contadoconliqui")
 
     def pick(node: dict) -> dict:
-        # DolarAPI trae "venta" y "compra" directo
         return {
             "compra": float(node["compra"]) if node.get("compra") is not None else None,
             "venta": float(node["venta"]) if node.get("venta") is not None else None,
@@ -61,6 +62,7 @@ def fetch_dolares_realtime() -> dict:
         "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "source": "dolarapi.com",
     }
+
 
 # =========================
 # Config UI
@@ -79,26 +81,22 @@ try:
     c2.metric("Dólar MEP (venta)",      f"{mep['venta']:.2f}" if mep["venta"] else "—")
     c3.metric("Dólar CCL (venta)",      f"{ccl['venta']:.2f}" if ccl["venta"] else "—")
     c4.caption(f"Actualizado: {dolares['ts']}")
-except Exception as e:
-    # fallback a tu macro.json actual (no rompe nada si falla la API)
+except Exception:
     st.warning("Error al obtener cotizaciones en tiempo real.")
-    # acá dejás tu lógica actual con macro.json
 
 st.divider()
 
 # =========================
 # Sidebar filtros
 # =========================
-# --- Tipo de instrumento ---
 tipo_sel = st.sidebar.radio(
     "Tipo de instrumento:",
     options=["LECAP", "BONCAP", "SOBERANO", "ON"],
-    index=2,  # por ejemplo arrancar en SOBERANO
+    index=2,
 )
 
-# --- Moneda (condicional) ---
 if tipo_sel in ["LECAP", "BONCAP"]:
-    moneda_sel = "ARS"          # forzado
+    moneda_sel = "ARS"
     st.sidebar.caption("Moneda: ARS")
 else:
     moneda_sel = st.sidebar.radio(
@@ -109,7 +107,7 @@ else:
 
 plazo_sel = st.sidebar.radio(
     "Plazo:",
-    options=["TODOS", "Corto", "Mediano", "Largo"],
+    options=["TODOS", "CORTO", "MEDIANO", "LARGO"],
     index=0,
 )
 
@@ -163,22 +161,17 @@ if df_curve is None:
     df_curve = pd.DataFrame()
 
 if not df_curve.empty:
-    # Moneda
     if "Moneda de Cobro" in df_curve.columns:
         df_curve = df_curve[df_curve["Moneda de Cobro"].astype(str).str.upper() == moneda_sel].copy()
 
-    # Tipo
     if "Tipo" in df_curve.columns:
         df_curve = df_curve[df_curve["Tipo"].astype(str).str.upper() == tipo_sel].copy()
 
-    # Plazo
     if plazo_sel != "TODOS" and "Plazo" in df_curve.columns:
         df_curve = df_curve[df_curve["Plazo"].astype(str).str.upper() == plazo_sel].copy()
 
-    # Importante: si por filtros no queda nada, NO mostramos el universo (evita puntos raros)
-
 # =========================
-# Tabs principales (Producto comercial)
+# Tabs principales
 # =========================
 tab_mercado, tab_sim, tab_bono, tab_datos = st.tabs(
     ["📊 Mercado y Gráfico", "🧮 Simular inversión", "💵 INFORMACIÓN - Bonos y Flujos", "⚙️ Datos de programa"]
@@ -190,18 +183,18 @@ tab_mercado, tab_sim, tab_bono, tab_datos = st.tabs(
 with tab_mercado:
     st.subheader("Mercado")
     st.caption(
-    "Visualizá el rendimiento anual estimado de cada bono según su plazo. "
-    "La curva representa el comportamiento promedio del mercado."
+        "Visualizá el rendimiento anual estimado de cada bono según su plazo. "
+        "La curva representa el comportamiento promedio del mercado."
     )
 
     st.markdown("### 📈 Curva de mercado")
 
-    # Curva arriba (visual principal)
     mostrar_labels = st.checkbox(
         "Mostrar nombres de bonos en la curva",
         value=True,
         help="Puede afectar la legibilidad si hay muchos bonos."
     )
+
     if df_curve is None or df_curve.empty:
         st.info("No hay datos para graficar con los filtros actuales.")
     else:
@@ -211,14 +204,12 @@ with tab_mercado:
             max_years = max_days / 365.0
             if max_years <= 2.0:
                 x_mode = "months"
-        fig = plot_curve(df_curve, annotate=mostrar_labels, x_unit=x_mode)  # x_mode = "months" o "years"
+        fig = plot_curve(df_curve, annotate=mostrar_labels, x_unit=x_mode)
         st.pyplot(fig, use_container_width=True)
 
     st.divider()
-
     st.markdown("### 📋 Bonos disponibles")
 
-    # Tabla (soporte)
     cols_mostrar = [
         "Especie",
         "Moneda de Cobro",
@@ -232,7 +223,6 @@ with tab_mercado:
     cols_mostrar_existentes = [c for c in cols_mostrar if c in df_view.columns]
     df_tab = df_view[cols_mostrar_existentes] if cols_mostrar_existentes else df_view
 
-    # Renombres comerciales (solo display)
     rename_map = {
         "Especie": "Bono",
         "Moneda de Cobro": "Moneda de cobro",
@@ -240,23 +230,29 @@ with tab_mercado:
         "Fecha de Vencimiento": "Vencimiento",
         "Tiempo al Vencimiento": "Tiempo restante",
         "TNA %": "Rendimiento anual estimado",
-        "Alerta": "Alerta",
     }
     df_display = df_tab.rename(columns=rename_map).copy()
 
-    # Flag real de pérdida implícita (para pintar)
-    if "_perdida_implicita" in df_view.columns and "Bono" in df_display.columns:
-        perdida_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
-        df_display["_perdida_implicita"] = df_display["Bono"].map(perdida_map).fillna(False).astype(bool)
+    # --- mask de rendimiento negativo (para rojo + icono) ---
+    if "Rendimiento anual estimado" in df_display.columns:
+        rend_num = (
+            df_display["Rendimiento anual estimado"]
+            .astype(str)
+            .str.replace("%", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
+        rend_num = pd.to_numeric(rend_num, errors="coerce")
+        mask_neg = rend_num.lt(0).fillna(False)
     else:
-        df_display["_perdida_implicita"] = False
+        mask_neg = pd.Series(False, index=df_display.index)
 
-    # Traemos la alerta desde df_view (para pintar, pero NO la mostramos)
-    if "Alerta" in df_view.columns and "Bono" in df_display.columns:
-        alerta_map = dict(zip(df_view["Especie"], df_view["Alerta"]))
-        df_display["_alerta_txt"] = df_display["Bono"].map(alerta_map).fillna("")
-    else:
-        df_display["_alerta_txt"] = ""
+    # Icono ⚠ junto al bono (solo display)
+    if "Bono" in df_display.columns:
+        df_display["Bono"] = np.where(
+            mask_neg,
+            "⚠ " + df_display["Bono"].astype(str),
+            df_display["Bono"].astype(str)
+        )
 
     # Formatos
     fmt = {}
@@ -265,42 +261,14 @@ with tab_mercado:
     if "Rendimiento anual estimado" in df_display.columns:
         fmt["Rendimiento anual estimado"] = "{:.2f}%"
 
-    # =========================
-    # ALERTAS: ordenar + pintar (sin columna visible)
-    # =========================
-    # =========================
-    # Pintar fila roja si Rendimiento anual estimado < 0
-    # (sin columnas técnicas visibles)
-    # =========================
-
-    # Aseguramos numérico
-    rend_col = "Rendimiento anual estimado"
-    if rend_col in df_display.columns:
-        rend_num = (
-            df_display[rend_col]
-            .astype(str)
-            .str.replace("%", "", regex=False)
-            .str.replace(",", ".", regex=False)
-        )
-        rend_num = pd.to_numeric(rend_num, errors="coerce")
-        mask_neg = rend_num < 0
-    else:
-        mask_neg = pd.Series(False, index=df_display.index)
-
-    # Función estilo
+    # Style: fila roja si rendimiento negativo
     def style_neg(row):
-        if mask_neg.loc[row.name]:
+        if bool(mask_neg.loc[row.name]):
             return ["background-color: #5a0f0f; color: #ffffff"] * len(row)
         return [""] * len(row)
 
-    # 👉 DataFrame limpio (sin columnas técnicas)
-    df_show = df_display.drop(
-        columns=["_perdida_implicita", "_alerta_txt", "_rend_neg"],
-        errors="ignore"
-    )
-
-    # 👉 Aplicamos estilo SOBRE el df limpio
-    styled = df_show.style.format(fmt).apply(style_neg, axis=1)
+    # Mostrar sin columnas técnicas (no agregamos ninguna acá)
+    styled = df_display.style.format(fmt).apply(style_neg, axis=1)
 
     st.dataframe(
         styled,
@@ -309,17 +277,15 @@ with tab_mercado:
         height=460,
     )
 
-    st.caption(
-    "El rendimiento anual estimado supone que mantenés el bono hasta su vencimiento."
-    )
+    st.caption("El rendimiento anual estimado supone que mantenés el bono hasta su vencimiento.")
 
 # ---------------------------------
 # TAB 2 — SIMULACIÓN: monto -> cuánto cobro
 # ---------------------------------
 with tab_sim:
     st.subheader("Simulación")
-
     st.caption("Simulá cuánto podrías cobrar si invertís hoy y mantenés el bono hasta el vencimiento.")
+
     monto_input = st.text_input(
         "Monto a invertir hoy",
         value="",
@@ -363,39 +329,57 @@ with tab_sim:
                 out = out.rename(columns={"Especie": "Bono", "Fecha de Vencimiento": "Vencimiento"})
                 out = out.sort_values("Vencimiento")
 
+                # =========================
+                # Alertas Simulación: pérdida implícita
+                # + icono ⚠ + fila roja
+                # =========================
+                out["_bono_key"] = out["Bono"].astype(str)
+
+                flag_map = {}
+                if "_perdida_implicita" in df_view.columns:
+                    flag_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
+
+                out["_perdida_implicita"] = out["_bono_key"].map(flag_map).fillna(False).astype(bool)
+
+                # Icono ⚠ solo display
+                out["Bono"] = np.where(out["_perdida_implicita"], "⚠ " + out["_bono_key"], out["_bono_key"])
+
+                def style_sim(row):
+                    if bool(row.get("_perdida_implicita", False)):
+                        return ["background-color: #5a0f0f; color: #ffffff"] * len(row)
+                    return [""] * len(row)
+
+                # DF limpio (sin columnas técnicas)
+                out_show = out.drop(columns=["_perdida_implicita", "_bono_key"], errors="ignore")
+
                 st.dataframe(
-                    out.style.format({
+                    out_show.style
+                    .format({
                         "Nominales": "{:,.0f}",
                         "Monto a Cobrar (moneda de cobro)": "{:,.2f}",
-                    }),
+                    })
+                    .apply(style_sim, axis=1),
                     use_container_width=True,
                     hide_index=True,
                     height=420,
                 )
 
-                if "_perdida_implicita" in df_view.columns:
-                    flag_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
-                    out["Alerta"] = out["Bono"].map(flag_map).fillna(False).map(lambda x: "⚠ Pérdida implícita" if x else "")
-                if "Alerta" in out.columns and (out["Alerta"] != "").any():
+                if out["_perdida_implicita"].any():
                     st.warning("⚠ Hay bonos que devuelven menos de lo que cuestan hoy (pérdida implícita). Miralos con cuidado.")
 
 # ---------------------------------
-# TAB 3 — BONO & FLUJOS: detalle + flujos (y opcional estimación por monto)
+# TAB 3 — BONO & FLUJOS: detalle + flujos
 # ---------------------------------
 with tab_bono:
     st.subheader("Bono & Flujos")
-    st.caption(
-    "Detalle de pagos futuros estimados por cada VN100 del bono seleccionado."
-    )
+    st.caption("Detalle de pagos futuros estimados por cada VN100 del bono seleccionado.")
 
     if df_view.empty or "Especie" not in df_view.columns:
         st.info("No hay bonos para mostrar detalle con los filtros actuales.")
     else:
         especies = df_view["Especie"].astype(str).str.upper().tolist()
         especie_sel = st.selectbox("Elegí un bono:", options=especies)
-        # -------------------------
-        # FICHA DEL BONO (FASE 5.3)
-        # -------------------------
+
         row = df_view[df_view["Especie"].astype(str).str.upper() == str(especie_sel).upper()]
         row = row.iloc[0] if not row.empty else None
 
@@ -423,8 +407,7 @@ with tab_bono:
 
         e, f, g, h = st.columns(4)
         e.metric("Tipo de tasa", _get("tipo_tasa"))
-        f.metric("Moneda de cobro", _get("Moneda de Cobro"))  # ya existe en df_view
-        # en vez de h para cupón, hacé 2 campos
+        f.metric("Moneda de cobro", _get("Moneda de Cobro"))
         g.metric("Vencimiento", _get("Fecha de Vencimiento"))
         h.metric("Frecuencia", _get("frecuencia"))
 
@@ -519,4 +502,5 @@ with tab_datos:
         for w in warns:
             st.write(f"- {w}")
     else:
+        st.info("Sin warnings relevantes.")
         st.info("Sin warnings relevantes.")
