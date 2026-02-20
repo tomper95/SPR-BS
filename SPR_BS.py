@@ -78,10 +78,10 @@ try:
     c1.metric("Dólar Oficial (venta)", f"{ofi['venta']:.2f}" if ofi["venta"] else "—")
     c2.metric("Dólar MEP (venta)",      f"{mep['venta']:.2f}" if mep["venta"] else "—")
     c3.metric("Dólar CCL (venta)",      f"{ccl['venta']:.2f}" if ccl["venta"] else "—")
-    c4.caption(f"Actualizado: {dolares['ts']} | Fuente: {dolares.get('source','API')} (cache 60s)")
+    c4.caption(f"Actualizado: {dolares['ts']}")
 except Exception as e:
     # fallback a tu macro.json actual (no rompe nada si falla la API)
-    st.warning("No pude traer cotizaciones en tiempo real. Mostrando valores locales.")
+    st.warning("Error al obtener cotizaciones en tiempo real.")
     # acá dejás tu lógica actual con macro.json
 
 st.divider()
@@ -99,7 +99,7 @@ tipo_sel = st.sidebar.radio(
 # --- Moneda (condicional) ---
 if tipo_sel in ["LECAP", "BONCAP"]:
     moneda_sel = "ARS"          # forzado
-    st.sidebar.caption("Moneda: ARS (fija para LECAP/BONCAP)")
+    st.sidebar.caption("Moneda: ARS")
 else:
     moneda_sel = st.sidebar.radio(
         "Moneda de cobro:",
@@ -109,7 +109,7 @@ else:
 
 plazo_sel = st.sidebar.radio(
     "Plazo:",
-    options=["TODOS", "CORTO", "MEDIANO", "LARGO"],
+    options=["TODOS", "Corto", "Mediano", "Largo"],
     index=0,
 )
 
@@ -181,7 +181,7 @@ if not df_curve.empty:
 # Tabs principales (Producto comercial)
 # =========================
 tab_mercado, tab_sim, tab_bono, tab_datos = st.tabs(
-    ["📊 Mercado", "🧮 Simulación", "💵 Bono & Flujos", "⚙️ Datos"]
+    ["📊 Mercado y Gráfico", "🧮 Simular inversión", "💵 INFORMACIÓN - Bonos y Flujos", "⚙️ Datos de programa"]
 )
 
 # ---------------------------------
