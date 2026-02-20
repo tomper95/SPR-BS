@@ -228,7 +228,6 @@ with tab_mercado:
         "Tiempo al Vencimiento",
         "TNA %",
         "Riesgo",
-        "Alerta",
     ]
     cols_mostrar_existentes = [c for c in cols_mostrar if c in df_view.columns]
     df_tab = df_view[cols_mostrar_existentes] if cols_mostrar_existentes else df_view
@@ -245,14 +244,19 @@ with tab_mercado:
     }
     df_display = df_tab.rename(columns=rename_map).copy()
 
-    # Orden automático: alertas al final (si la columna existe)
-    if "_perdida_implicita" in df_display.columns:
-        # Traemos la flag desde df_view original por Bono
-        flag_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
-        df_display = df_display.drop(columns=["_perdida_implicita"])
+    # Flag real de pérdida implícita (para pintar)
+    if "_perdida_implicita" in df_view.columns and "Bono" in df_display.columns:
+        perdida_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
+        df_display["_perdida_implicita"] = df_display["Bono"].map(perdida_map).fillna(False).astype(bool)
+    else:
+        df_display["_perdida_implicita"] = False
 
-        # Alertas al final
-        df_display = df_display.sort_values(by="_perdida_implicita", ascending=True)
+    # Traemos la alerta desde df_view (para pintar, pero NO la mostramos)
+    if "Alerta" in df_view.columns and "Bono" in df_display.columns:
+        alerta_map = dict(zip(df_view["Especie"], df_view["Alerta"]))
+        df_display["_alerta_txt"] = df_display["Bono"].map(alerta_map).fillna("")
+    else:
+        df_display["_alerta_txt"] = ""
 
     # Formatos
     fmt = {}
@@ -262,21 +266,41 @@ with tab_mercado:
         fmt["Rendimiento anual estimado"] = "{:.2f}%"
 
     # =========================
-    # ALERTAS: ordenar + pintar
+    # ALERTAS: ordenar + pintar (sin columna visible)
     # =========================
-    if "_perdida_implicita" in df_display.columns:
-        df_display = df_display.sort_values(by="_perdida_implicita", ascending=True)
+    # =========================
+    # Pintar fila roja si Rendimiento anual estimado < 0
+    # (sin columnas técnicas visibles)
+    # =========================
 
-    def style_alertas(row):
-        if row.get("_perdida_implicita", False):
-            return ["background-color: #3b0a0a; color: #ffd6d6"] * len(row)
+    # Aseguramos numérico
+    rend_col = "Rendimiento anual estimado"
+    if rend_col in df_display.columns:
+        rend_num = (
+            df_display[rend_col]
+            .astype(str)
+            .str.replace("%", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
+        rend_num = pd.to_numeric(rend_num, errors="coerce")
+        mask_neg = rend_num < 0
+    else:
+        mask_neg = pd.Series(False, index=df_display.index)
+
+    # Función estilo
+    def style_neg(row):
+        if mask_neg.loc[row.name]:
+            return ["background-color: #5a0f0f; color: #ffffff"] * len(row)
         return [""] * len(row)
 
-    styled = df_display.style.format(fmt).apply(style_alertas, axis=1)
+    # 👉 DataFrame limpio (sin columnas técnicas)
+    df_show = df_display.drop(
+        columns=["_perdida_implicita", "_alerta_txt", "_rend_neg"],
+        errors="ignore"
+    )
 
-    # Eliminamos la columna interna antes de mostrar
-    if "_perdida_implicita" in df_display.columns:
-        df_display = df_display.drop(columns=["_perdida_implicita"])
+    # 👉 Aplicamos estilo SOBRE el df limpio
+    styled = df_show.style.format(fmt).apply(style_neg, axis=1)
 
     st.dataframe(
         styled,
