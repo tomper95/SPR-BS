@@ -22,6 +22,7 @@ from src.engine_bonos import run_engine_bonos
 from src.plotting import plot_curve
 from src.checklist import run_checklist
 
+from streamlit_autorefresh import st_autorefresh
 
 def load_macro(macro_path: str) -> dict:
     p = Path(macro_path)
@@ -69,6 +70,8 @@ def fetch_dolares_realtime() -> dict:
 # =========================
 st.set_page_config(layout="wide")
 st.title("🕷️SPideR – Decidir mejor")
+
+st_autorefresh(interval=1000, key="rt")  # cada 2 segundos
 
 try:
     dolares = fetch_dolares_realtime()
