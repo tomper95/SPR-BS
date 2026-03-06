@@ -336,32 +336,45 @@ with tab_sim:
                 # Alertas Simulación: pérdida implícita
                 # + icono ⚠ + fila roja
                 # =========================
-                out["_bono_key"] = out["Bono"].astype(str)
-
+                # Mapear flag desde df_view
                 flag_map = {}
                 if "_perdida_implicita" in df_view.columns:
                     flag_map = dict(zip(df_view["Especie"], df_view["_perdida_implicita"]))
 
-                out["_perdida_implicita"] = out["_bono_key"].map(flag_map).fillna(False).astype(bool)
+                out["_perdida_implicita"] = out["Bono"].map(flag_map).fillna(False).astype(bool)
 
-                # Icono ⚠ solo display
-                out["Bono"] = np.where(out["_perdida_implicita"], "⚠ " + out["_bono_key"], out["_bono_key"])
+                # Agregar icono ⚠ solo visual
+                out["Bono"] = np.where(
+                    out["_perdida_implicita"],
+                    "⚠ " + out["Bono"].astype(str),
+                    out["Bono"].astype(str)
+                )
 
+                # Creamos DataFrame SOLO con columnas visibles
+                out_visible = out[[
+                   "Bono",
+                   "Vencimiento",
+                   "Nominales",
+                   "Monto a Cobrar (moneda de cobro)"
+                ]].copy()
+
+                # Función de estilo (usa el flag del DF original)
                 def style_sim(row):
-                    if bool(row.get("_perdida_implicita", False)):
+                    if bool(out.loc[row.name, "_perdida_implicita"]):
                         return ["background-color: #5a0f0f; color: #ffffff"] * len(row)
                     return [""] * len(row)
 
-                # DF limpio (sin columnas técnicas)
-                out_show = out.drop(columns=["_perdida_implicita", "_bono_key"], errors="ignore")
-
-                st.dataframe(
-                    out_show.style
+                styled_sim = (
+                    out_visible.style
                     .format({
                         "Nominales": "{:,.0f}",
                         "Monto a Cobrar (moneda de cobro)": "{:,.2f}",
                     })
-                    .apply(style_sim, axis=1),
+                    .apply(style_sim, axis=1)
+                )
+
+                st.dataframe(
+                    styled_sim,
                     use_container_width=True,
                     hide_index=True,
                     height=420,
