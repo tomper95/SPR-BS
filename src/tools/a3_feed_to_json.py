@@ -29,6 +29,10 @@ SUB_MSG = {
         "md.rx_TIVA_GD38D_24hs",
         "md.rx_TIVA_GD41D_24hs",
         "md.rx_TIVA_GD46D_24hs",
+        "md.rx_TIVA_BPOA7D_24hs",
+        "md.rx_TIVA_BPOB7D_24hs",
+        "md.rx_TIVA_BPOC7D_24hs",
+        "md.rx_TIVA_BPOD7D_24hs",
     ],
     "replace": False
 }
